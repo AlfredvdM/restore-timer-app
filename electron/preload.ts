@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   openHistoryWindow: () => ipcRenderer.send("open-history-window"),
   setTimerRunning: (isRunning: boolean) =>
     ipcRenderer.send("timer-state-changed", isRunning),
+  setActiveDoctor: (name: string | null) =>
+    ipcRenderer.send("doctor-changed", name),
 
   // Main → Renderer listeners
   onWindowMoved: (callback: (position: { x: number; y: number }) => void) => {

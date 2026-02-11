@@ -9,6 +9,7 @@ export interface ElectronAPI {
   getWindowPosition: () => Promise<{ x: number; y: number } | null>;
   openHistoryWindow: () => void;
   setTimerRunning: (isRunning: boolean) => void;
+  setActiveDoctor: (name: string | null) => void;
   onWindowMoved: (callback: (position: { x: number; y: number }) => void) => void;
   onNavigate: (callback: (target: string) => void) => void;
   onRequestSaveAndQuit: (callback: () => void) => void;

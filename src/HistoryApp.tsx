@@ -1,5 +1,10 @@
+import { DoctorProvider } from './contexts/DoctorContext';
 import HistoryView from './components/HistoryView';
 
 export default function HistoryApp() {
-  return <HistoryView />;
+  return (
+    <DoctorProvider>
+      <HistoryView />
+    </DoctorProvider>
+  );
 }

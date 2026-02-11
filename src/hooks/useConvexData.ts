@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
-import { DOCTOR, APPOINTMENT_TYPE_OPTIONS } from '../types';
+import { APPOINTMENT_TYPE_OPTIONS } from '../types';
 import type { TimerSettings } from '../types';
 
 interface ConvexAppointmentType {
@@ -39,7 +39,7 @@ const FALLBACK_TYPES: ConvexAppointmentType[] = APPOINTMENT_TYPE_OPTIONS.map((t,
 }));
 
 const DEFAULT_SETTINGS: TimerSettings = {
-  userId: DOCTOR.userId,
+  userId: '',
   soundEnabled: true,
   soundVolume: 0.5,
   yellowThreshold: 0.6,
@@ -48,10 +48,13 @@ const DEFAULT_SETTINGS: TimerSettings = {
   defaultAppointmentType: 'standard',
 };
 
-export function useConvexData() {
+export function useConvexData(doctorSlug: string | null) {
   // ── Queries ────────────────────────────────────
   const convexTypes = useQuery(api.appointmentTypes.getActiveAppointmentTypes);
-  const convexSettings = useQuery(api.settings.getSettings, { userId: DOCTOR.userId });
+  const convexSettings = useQuery(
+    api.settings.getSettings,
+    doctorSlug ? { userId: doctorSlug } : 'skip',
+  );
 
   // ── All appointment types (including inactive, for settings) ──
   const convexAllTypes = useQuery(api.appointmentTypes.getAllAppointmentTypes);
@@ -68,12 +71,12 @@ export function useConvexData() {
   // ── Seed data on mount ─────────────────────────
   const seeded = useRef(false);
   useEffect(() => {
-    if (!seeded.current) {
+    if (!seeded.current && doctorSlug) {
       seeded.current = true;
       seedMutation().catch(() => {});
-      ensureSettingsMutation({ userId: DOCTOR.userId }).catch(() => {});
+      ensureSettingsMutation({ userId: doctorSlug }).catch(() => {});
     }
-  }, [seedMutation, ensureSettingsMutation]);
+  }, [seedMutation, ensureSettingsMutation, doctorSlug]);
 
   // ── Offline detection ──────────────────────────
   const [isOffline, setIsOffline] = useState(false);
@@ -118,7 +121,7 @@ export function useConvexData() {
         defaultAppointmentType: convexSettings.defaultAppointmentType,
         windowPosition: convexSettings.windowPosition,
       }
-    : DEFAULT_SETTINGS;
+    : { ...DEFAULT_SETTINGS, userId: doctorSlug ?? '' };
 
   const settingsLoaded = convexSettings !== undefined;
 
@@ -163,13 +166,14 @@ export function useConvexData() {
   // ── Settings mutations (save on change) ────────
   const updateSetting = useCallback(
     async (field: string, value: boolean | number | string) => {
+      if (!doctorSlug) return;
       try {
-        await updateSettingMutation({ userId: DOCTOR.userId, field, value });
+        await updateSettingMutation({ userId: doctorSlug, field, value });
       } catch {
         // Offline — silently ignore, settings will sync when back
       }
     },
-    [updateSettingMutation],
+    [updateSettingMutation, doctorSlug],
   );
 
   const allAppointmentTypes = convexAllTypes ?? [];

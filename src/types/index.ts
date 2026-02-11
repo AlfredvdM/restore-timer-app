@@ -2,11 +2,15 @@
 // RESTORE Timer — Core Types
 // ──────────────────────────────────────────────
 
-/** Hardcoded doctor identity for MVP */
-export const DOCTOR = { userId: "dr-annetjie", doctorName: "Dr Annetjie van der Nest" } as const;
+/** Doctor profile */
+export interface Doctor {
+  slug: string;
+  name: string;
+  colour: string;
+}
 
-/** Widget UI states (superset of timer states — includes setup, approval, minimised, settings) */
-export type WidgetState = 'idle' | 'setup' | 'running' | 'paused' | 'overtime' | 'approval' | 'minimised' | 'settings';
+/** Widget UI states (superset of timer states — includes setup, approval, minimised, settings, doctorSelect) */
+export type WidgetState = 'idle' | 'setup' | 'running' | 'paused' | 'overtime' | 'approval' | 'minimised' | 'settings' | 'doctorSelect';
 
 /** Window heights for each widget state */
 export const STATE_HEIGHTS: Record<WidgetState, number> = {
@@ -18,6 +22,7 @@ export const STATE_HEIGHTS: Record<WidgetState, number> = {
   approval: 490,
   minimised: 40,
   settings: 520,
+  doctorSelect: 280,
 };
 
 /** Fallback appointment types used when Convex is offline or loading */

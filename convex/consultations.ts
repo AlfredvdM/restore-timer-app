@@ -78,6 +78,42 @@ export const getConsultations = query({
   },
 });
 
+// Get all consultations across all doctors (for "All Doctors" history view)
+export const getAllConsultations = query({
+  args: {
+    startDate: v.optional(v.string()),
+    endDate: v.optional(v.string()),
+    appointmentType: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    let results = await ctx.db
+      .query("consultations")
+      .withIndex("by_date")
+      .collect();
+
+    if (args.startDate) {
+      results = results.filter((c) => c.consultationDate >= args.startDate!);
+    }
+    if (args.endDate) {
+      results = results.filter((c) => c.consultationDate <= args.endDate!);
+    }
+    if (args.appointmentType) {
+      results = results.filter(
+        (c) => c.appointmentType === args.appointmentType
+      );
+    }
+
+    results.sort((a, b) => b.completedAt - a.completedAt);
+
+    if (args.limit) {
+      results = results.slice(0, args.limit);
+    }
+
+    return results;
+  },
+});
+
 // Get today's summary stats for a given doctor
 export const getTodayStats = query({
   args: { doctorId: v.string() },

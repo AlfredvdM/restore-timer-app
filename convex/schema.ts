@@ -2,6 +2,17 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  // Doctor profiles for the practice
+  doctors: defineTable({
+    slug: v.string(),
+    name: v.string(),
+    colour: v.string(),
+    isActive: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_active", ["isActive"]),
+
   // Consultation log — the core data this app produces
   consultations: defineTable({
     doctorId: v.string(),

@@ -1,13 +1,13 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
-import { DOCTOR } from '../types';
 
 // ── Types ──────────────────────────────────────────────
 interface ConsultationRow {
   _id: string;
   completedAt: number;
   patientName?: string;
+  doctorName: string;
   appointmentType: string;
   targetDurationSeconds: number;
   actualDurationSeconds: number;
@@ -21,6 +21,7 @@ interface ConsultationRow {
 type SortField =
   | 'completedAt'
   | 'patientName'
+  | 'doctorName'
   | 'appointmentType'
   | 'targetDurationSeconds'
   | 'actualDurationSeconds'
@@ -32,6 +33,11 @@ type SortDir = 'asc' | 'desc';
 type StatusFilter = 'all' | 'ontime' | 'overtime';
 
 const PAGE_SIZE = 15;
+
+interface HistoryTableProps {
+  doctorSlug: string | null;
+  showDoctorColumn: boolean;
+}
 
 // ── Helpers ────────────────────────────────────────────
 function formatTime(seconds: number): string {
@@ -79,7 +85,7 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
 }
 
 // ── Main Component ─────────────────────────────────────
-export default function HistoryTable() {
+export default function HistoryTable({ doctorSlug, showDoctorColumn }: HistoryTableProps) {
   // Filter state
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -93,13 +99,31 @@ export default function HistoryTable() {
   // Pagination
   const [page, setPage] = useState(0);
 
-  // Convex queries
-  const rawConsultations = useQuery(api.consultations.getConsultations, {
-    doctorId: DOCTOR.userId,
-    startDate: startDate || undefined,
-    endDate: endDate || undefined,
-    appointmentType: typeFilter !== 'all' ? typeFilter : undefined,
-  });
+  // Convex queries — use the appropriate query based on doctor filter
+  const doctorConsultations = useQuery(
+    api.consultations.getConsultations,
+    doctorSlug
+      ? {
+          doctorId: doctorSlug,
+          startDate: startDate || undefined,
+          endDate: endDate || undefined,
+          appointmentType: typeFilter !== 'all' ? typeFilter : undefined,
+        }
+      : 'skip',
+  );
+
+  const allConsultations = useQuery(
+    api.consultations.getAllConsultations,
+    !doctorSlug
+      ? {
+          startDate: startDate || undefined,
+          endDate: endDate || undefined,
+          appointmentType: typeFilter !== 'all' ? typeFilter : undefined,
+        }
+      : 'skip',
+  );
+
+  const rawConsultations = doctorSlug ? doctorConsultations : allConsultations;
 
   const appointmentTypes = useQuery(api.appointmentTypes.getActiveAppointmentTypes);
   const loading = rawConsultations === undefined;
@@ -127,6 +151,9 @@ export default function HistoryTable() {
           break;
         case 'patientName':
           cmp = (a.patientName ?? '').localeCompare(b.patientName ?? '');
+          break;
+        case 'doctorName':
+          cmp = a.doctorName.localeCompare(b.doctorName);
           break;
         case 'appointmentType':
           cmp = a.appointmentType.localeCompare(b.appointmentType);
@@ -170,6 +197,7 @@ export default function HistoryTable() {
   const exportCSV = () => {
     const headers = [
       'Date & Time',
+      ...(showDoctorColumn ? ['Doctor'] : []),
       'Patient Name',
       'Appointment Type',
       'Target (mm:ss)',
@@ -180,6 +208,7 @@ export default function HistoryTable() {
 
     const rows = sortedData.map((c) => [
       formatDateTime(c.completedAt),
+      ...(showDoctorColumn ? [c.doctorName] : []),
       c.patientName || '—',
       formatTypeName(c.appointmentType),
       formatTime(c.targetDurationSeconds),
@@ -202,6 +231,8 @@ export default function HistoryTable() {
   };
 
   // ── Column header helper ──────────────────────────
+  const colCount = showDoctorColumn ? 8 : 7;
+
   const Th = ({
     label,
     field,
@@ -316,6 +347,7 @@ export default function HistoryTable() {
           <thead className="bg-gray-50/80 sticky top-0 z-10">
             <tr>
               <Th label="Date & Time" field="completedAt" className="min-w-[180px]" />
+              {showDoctorColumn && <Th label="Doctor" field="doctorName" />}
               <Th label="Patient" field="patientName" />
               <Th label="Type" field="appointmentType" />
               <Th label="Target" field="targetDurationSeconds" />
@@ -329,7 +361,7 @@ export default function HistoryTable() {
               // Skeleton rows
               Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i}>
-                  {Array.from({ length: 7 }).map((_, j) => (
+                  {Array.from({ length: colCount }).map((_, j) => (
                     <td key={j} className="px-3 py-3">
                       <div className="h-4 bg-gray-100 rounded animate-pulse w-16" />
                     </td>
@@ -338,7 +370,7 @@ export default function HistoryTable() {
               ))
             ) : pageData.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-3 py-12 text-center text-gray-400 text-sm">
+                <td colSpan={colCount} className="px-3 py-12 text-center text-gray-400 text-sm">
                   No consultations found
                 </td>
               </tr>
@@ -351,6 +383,11 @@ export default function HistoryTable() {
                   <td className="px-3 py-2.5 text-gray-700 whitespace-nowrap">
                     {formatDateTime(c.completedAt)}
                   </td>
+                  {showDoctorColumn && (
+                    <td className="px-3 py-2.5 text-gray-600">
+                      {c.doctorName}
+                    </td>
+                  )}
                   <td className="px-3 py-2.5 text-gray-700">
                     {c.patientName || (
                       <span className="text-gray-300">&mdash;</span>

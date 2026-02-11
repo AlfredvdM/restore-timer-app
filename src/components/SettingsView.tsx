@@ -37,6 +37,9 @@ interface SettingsViewProps {
   }) => void;
   onToggleType: (id: string) => void;
   onReorderTypes: (orderedIds: string[]) => void;
+  doctorName?: string;
+  onSwitchDoctor?: () => void;
+  onDeleteProfile?: () => void;
   onDone: () => void;
 }
 
@@ -99,6 +102,9 @@ export default function SettingsView({
   onUpsertType,
   onToggleType,
   onReorderTypes,
+  doctorName,
+  onSwitchDoctor,
+  onDeleteProfile,
   onDone,
 }: SettingsViewProps) {
   const [manageOpen, setManageOpen] = useState(false);
@@ -241,6 +247,47 @@ export default function SettingsView({
 
       {/* ── Scrollable Content ──────────────────── */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pb-6">
+
+        {/* ── Doctor Profile ────────────────────── */}
+        {doctorName && (
+          <>
+            <SectionLabel>Doctor Profile</SectionLabel>
+            <div className="rounded-xl bg-gray-50 border border-gray-100 divide-y divide-gray-100">
+              <div className="flex items-center justify-between px-3 py-2.5">
+                <span className="text-[13px] text-gray-700 font-medium">{doctorName}</span>
+                <div className="flex items-center gap-1">
+                  {onSwitchDoctor && (
+                    <button
+                      onClick={onSwitchDoctor}
+                      className="
+                        text-[11px] font-medium text-emerald-600
+                        hover:text-emerald-700 hover:bg-emerald-50
+                        px-2 py-1 rounded-md
+                        transition-colors duration-150
+                      "
+                    >
+                      Switch
+                    </button>
+                  )}
+                  {onDeleteProfile && (
+                    <button
+                      onClick={onDeleteProfile}
+                      className="
+                        text-[11px] font-medium text-red-400
+                        hover:text-red-600 hover:bg-red-50
+                        px-2 py-1 rounded-md
+                        transition-colors duration-150
+                      "
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+            <Divider />
+          </>
+        )}
 
         {/* ── Sound ─────────────────────────────── */}
         <SectionLabel>Sound</SectionLabel>

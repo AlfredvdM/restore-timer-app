@@ -20,6 +20,7 @@ let historyWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isTimerRunning = false;
 let isQuitting = false;
+let activeDoctorName: string | null = null;
 
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 
@@ -399,7 +400,17 @@ function updateTrayMenu() {
   if (!tray) return;
   const isVisible = mainWindow?.isVisible() ?? false;
 
-  const contextMenu = Menu.buildFromTemplate([
+  const menuItems: Electron.MenuItemConstructorOptions[] = [];
+
+  // Active doctor label at top
+  if (activeDoctorName) {
+    menuItems.push(
+      { label: activeDoctorName, enabled: false },
+      { type: "separator" },
+    );
+  }
+
+  menuItems.push(
     {
       label: isVisible ? "Hide Timer" : "Show Timer",
       click: () => toggleMainWindow(),
@@ -423,6 +434,14 @@ function updateTrayMenu() {
         mainWindow?.webContents.send("navigate", "settings");
       },
     },
+    {
+      label: "Switch Doctor...",
+      enabled: !isTimerRunning,
+      click: () => {
+        showMainWindow();
+        mainWindow?.webContents.send("navigate", "switch-doctor");
+      },
+    },
     { type: "separator" },
     {
       label: "Quit",
@@ -435,9 +454,16 @@ function updateTrayMenu() {
         }
       },
     },
-  ]);
+  );
+
+  const contextMenu = Menu.buildFromTemplate(menuItems);
 
   tray.setContextMenu(contextMenu);
+  tray.setToolTip(
+    activeDoctorName
+      ? `RESTORE Timer — ${activeDoctorName}`
+      : "RESTORE Timer",
+  );
 }
 
 function toggleMainWindow() {
@@ -561,6 +587,12 @@ ipcMain.on("open-history-window", () => {
 
 ipcMain.on("timer-state-changed", (_event, running: boolean) => {
   isTimerRunning = running;
+  updateTrayMenu();
+});
+
+ipcMain.on("doctor-changed", (_event, name: string | null) => {
+  activeDoctorName = name;
+  updateTrayMenu();
 });
 
 // ── App Lifecycle ───────────────────────────────────────

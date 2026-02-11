@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
-import { STATE_HEIGHTS, DOCTOR } from '../types';
+import { STATE_HEIGHTS } from '../types';
+import { useDoctorContext } from '../contexts/DoctorContext';
 import { useTimer } from '../hooks/useTimer';
 import { useConvexData } from '../hooks/useConvexData';
 import CustomTitleBar from './CustomTitleBar';
@@ -12,6 +13,9 @@ import ApprovalScreen from './ApprovalScreen';
 import MinimisedWidget from './MinimisedWidget';
 import OfflineIndicator from './OfflineIndicator';
 import SettingsView from './SettingsView';
+import DoctorSelector from './DoctorSelector';
+import DoctorSetup from './DoctorSetup';
+import DoctorBadge from './DoctorBadge';
 
 function formatDuration(totalSeconds: number): string {
   const mins = Math.floor(totalSeconds / 60);
@@ -20,6 +24,9 @@ function formatDuration(totalSeconds: number): string {
 }
 
 export default function TimerWidget() {
+  const { activeDoctor, allDoctors, isLoading: doctorsLoading, selectDoctor, clearDoctor } = useDoctorContext();
+  const [showAddDoctor, setShowAddDoctor] = useState(false);
+
   const {
     appointmentTypes,
     allAppointmentTypes,
@@ -31,8 +38,9 @@ export default function TimerWidget() {
     upsertAppointmentType,
     toggleAppointmentType,
     reorderAppointmentTypes,
-  } = useConvexData();
+  } = useConvexData(activeDoctor?.slug ?? null);
 
+  const deactivateDoctor = useMutation(api.doctors.deactivateDoctor);
   const [showSettings, setShowSettings] = useState(false);
 
   const timer = useTimer({
@@ -45,6 +53,22 @@ export default function TimerWidget() {
 
   const updateWindowPositionMutation = useMutation(api.settings.updateWindowPosition);
 
+  // ── Determine if we need to show doctor selection ──
+  const needsDoctorSelect = !activeDoctor && !doctorsLoading;
+  const noDoctorsExist = needsDoctorSelect && allDoctors.length === 0;
+
+  // ── Resize for doctor selection screen ─────────
+  useEffect(() => {
+    if (showAddDoctor) {
+      window.electronAPI?.setWindowSize(320, STATE_HEIGHTS.doctorSelect);
+    } else if (needsDoctorSelect) {
+      // 28px title bar + 50px header + 52px per doctor row + 48px "Add Doctor" button + 12px bottom
+      const contentHeight = 138 + allDoctors.length * 52;
+      // Cap at 400px — the list scrolls beyond that
+      window.electronAPI?.setWindowSize(320, Math.max(STATE_HEIGHTS.doctorSelect, Math.min(400, contentHeight)));
+    }
+  }, [needsDoctorSelect, showAddDoctor, allDoctors.length]);
+
   // ── Apply always-on-top from settings ───────────
   useEffect(() => {
     if (settings.alwaysOnTop !== undefined) {
@@ -54,9 +78,11 @@ export default function TimerWidget() {
 
   // ── Save window position when moved (debounced to Convex) ──
   useEffect(() => {
+    if (!activeDoctor) return;
+    const slug = activeDoctor.slug;
     const handler = (position: { x: number; y: number }) => {
       updateWindowPositionMutation({
-        userId: DOCTOR.userId,
+        userId: slug,
         x: position.x,
         y: position.y,
       }).catch(() => {});
@@ -66,7 +92,7 @@ export default function TimerWidget() {
     return () => {
       window.electronAPI?.removeAllListeners('window-moved');
     };
-  }, [updateWindowPositionMutation]);
+  }, [updateWindowPositionMutation, activeDoctor]);
 
   // ── Notify main process of timer running state ──
   useEffect(() => {
@@ -77,17 +103,32 @@ export default function TimerWidget() {
     window.electronAPI?.setTimerRunning(isRunning);
   }, [timer.widgetState]);
 
+  // ── Notify main process of active doctor ──
+  useEffect(() => {
+    window.electronAPI?.setActiveDoctor(activeDoctor?.name ?? null);
+  }, [activeDoctor]);
+
   // ── Handle tray menu navigation ─────────────────
   useEffect(() => {
     const handler = (target: string) => {
       if (target === 'new-consultation') {
-        if (timer.widgetState === 'idle') {
+        if (timer.widgetState === 'idle' && activeDoctor) {
           timer.goToSetup();
         }
       } else if (target === 'settings') {
-        if (timer.widgetState === 'idle') {
+        if (timer.widgetState === 'idle' && activeDoctor) {
           window.electronAPI?.setWindowSize(320, STATE_HEIGHTS.settings);
           setShowSettings(true);
+        }
+      } else if (target === 'switch-doctor') {
+        const isRunning =
+          timer.widgetState === 'running' ||
+          timer.widgetState === 'paused' ||
+          timer.widgetState === 'overtime';
+        if (!isRunning) {
+          clearDoctor();
+          setShowSettings(false);
+          setShowAddDoctor(false);
         }
       }
     };
@@ -96,7 +137,7 @@ export default function TimerWidget() {
     return () => {
       window.electronAPI?.removeAllListeners('navigate');
     };
-  }, [timer.widgetState, timer.goToSetup]);
+  }, [timer.widgetState, timer.goToSetup, activeDoctor, clearDoctor]);
 
   // ── Handle save-and-quit request ────────────────
   useEffect(() => {
@@ -106,16 +147,14 @@ export default function TimerWidget() {
         timer.widgetState === 'paused' ||
         timer.widgetState === 'overtime'
       ) {
-        // Stop the timer and save
         timer.stop();
-        // Trigger save with the approval snapshot
         const consultationData = timer.consultation;
         const snapshot = timer.save();
 
-        if (consultationData) {
+        if (consultationData && activeDoctor) {
           await saveConsultationData({
-            doctorId: DOCTOR.userId,
-            doctorName: DOCTOR.doctorName,
+            doctorId: activeDoctor.slug,
+            doctorName: activeDoctor.name,
             patientName: consultationData.patientName || undefined,
             appointmentType: consultationData.appointmentType,
             targetDurationSeconds: consultationData.targetDurationSeconds,
@@ -127,7 +166,6 @@ export default function TimerWidget() {
           });
         }
       }
-      // Quit after saving
       window.electronAPI?.closeApp();
     };
 
@@ -135,23 +173,26 @@ export default function TimerWidget() {
     return () => {
       window.electronAPI?.removeAllListeners('request-save-and-quit');
     };
-  }, [timer, saveConsultationData]);
+  }, [timer, saveConsultationData, activeDoctor]);
 
   // ── Resize window on state change ──────────────────────
   useEffect(() => {
+    if (needsDoctorSelect || showAddDoctor) return; // handled separately
     const state = timer.widgetState;
     if (state === 'minimised') {
       window.electronAPI?.setWindowSize(200, STATE_HEIGHTS.minimised);
     } else {
       window.electronAPI?.setWindowSize(320, STATE_HEIGHTS[state]);
     }
-  }, [timer.widgetState]);
+  }, [timer.widgetState, needsDoctorSelect, showAddDoctor]);
 
   // ── Computed ───────────────────────────────────────────
   const isColoured =
     timer.widgetState === 'running' ||
     timer.widgetState === 'paused' ||
     timer.widgetState === 'overtime';
+
+  const isTimerActive = isColoured;
 
   const bg = isColoured ? timer.currentColour.background : '#FFFFFF';
 
@@ -171,10 +212,10 @@ export default function TimerWidget() {
     const consultationData = timer.consultation;
     const snapshot = timer.save();
 
-    if (consultationData) {
+    if (consultationData && activeDoctor) {
       await saveConsultationData({
-        doctorId: DOCTOR.userId,
-        doctorName: DOCTOR.doctorName,
+        doctorId: activeDoctor.slug,
+        doctorName: activeDoctor.name,
         patientName: consultationData.patientName || undefined,
         appointmentType: consultationData.appointmentType,
         targetDurationSeconds: consultationData.targetDurationSeconds,
@@ -187,10 +228,55 @@ export default function TimerWidget() {
     }
   };
 
+  const handleDoctorCreated = (slug: string) => {
+    selectDoctor(slug);
+    setShowAddDoctor(false);
+  };
+
   // Target label for display
   const targetMinutes = timer.consultation
     ? Math.round(timer.consultation.targetDurationSeconds / 60)
     : 0;
+
+  // ── Loading state ──────────────────────────────────────
+  if (doctorsLoading) {
+    return (
+      <div className="min-h-screen w-full flex flex-col relative overflow-hidden" style={{ backgroundColor: '#FFFFFF' }}>
+        <CustomTitleBar state="idle" onMinimise={() => {}} />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="w-5 h-5 border-2 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
+        </div>
+      </div>
+    );
+  }
+
+  // ── Doctor setup (no doctors exist) ────────────────────
+  if (noDoctorsExist || (showAddDoctor && !activeDoctor)) {
+    return (
+      <div className="min-h-screen w-full flex flex-col relative overflow-hidden" style={{ backgroundColor: '#FFFFFF' }}>
+        <CustomTitleBar state="idle" onMinimise={() => {}} />
+        <DoctorSetup
+          hasDoctors={allDoctors.length > 0}
+          onCreated={handleDoctorCreated}
+          onCancel={() => setShowAddDoctor(false)}
+        />
+      </div>
+    );
+  }
+
+  // ── Doctor selector ────────────────────────────────────
+  if (needsDoctorSelect) {
+    return (
+      <div className="min-h-screen w-full flex flex-col relative overflow-hidden" style={{ backgroundColor: '#FFFFFF' }}>
+        <CustomTitleBar state="idle" onMinimise={() => {}} />
+        <DoctorSelector
+          doctors={allDoctors}
+          onSelect={selectDoctor}
+          onAddNew={() => setShowAddDoctor(true)}
+        />
+      </div>
+    );
+  }
 
   // ── Minimised state — separate layout ─────────────────
   if (timer.widgetState === 'minimised') {
@@ -221,6 +307,21 @@ export default function TimerWidget() {
           onUpsertType={upsertAppointmentType}
           onToggleType={toggleAppointmentType}
           onReorderTypes={reorderAppointmentTypes}
+          doctorName={activeDoctor!.name}
+          onSwitchDoctor={() => {
+            clearDoctor();
+            setShowSettings(false);
+          }}
+          onDeleteProfile={async () => {
+            if (!activeDoctor) return;
+            const confirmed = window.confirm(`Delete profile for ${activeDoctor.name}? Their consultation history will be preserved.`);
+            if (!confirmed) return;
+            try {
+              await deactivateDoctor({ slug: activeDoctor.slug });
+            } catch { /* ignore */ }
+            clearDoctor();
+            setShowSettings(false);
+          }}
           onDone={() => {
             setShowSettings(false);
             window.electronAPI?.setWindowSize(320, STATE_HEIGHTS.idle);
@@ -245,11 +346,21 @@ export default function TimerWidget() {
       {/* ── IDLE ─────────────────────────────────────── */}
       {timer.widgetState === 'idle' && (
         <div className="flex-1 flex flex-col justify-center px-4 pb-2">
-          <div className="text-center mb-2">
+          <div className="text-center mb-1">
             <p className="text-[13px] font-semibold text-gray-700 tracking-wide mb-0.5">
               RESTORE Health &amp; Care
             </p>
             <p className="text-[10px] text-gray-400">Consultation Timer</p>
+          </div>
+          {/* Doctor Badge */}
+          <div className="flex justify-center mb-2">
+            <DoctorBadge
+              doctor={activeDoctor!}
+              clickable={!isTimerActive}
+              onClick={() => {
+                clearDoctor();
+              }}
+            />
           </div>
           <button
             onClick={timer.goToSetup}

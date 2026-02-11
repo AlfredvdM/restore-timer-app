@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
-import { DOCTOR } from '../types';
+import { useDoctorContext } from '../contexts/DoctorContext';
 import HistoryTable from './HistoryTable';
 
 function formatDuration(totalSeconds: number): string {
@@ -43,11 +44,23 @@ function StatCard({
 }
 
 export default function HistoryView() {
-  const stats = useQuery(api.consultations.getTodayStats, {
-    doctorId: DOCTOR.userId,
-  });
+  const { activeDoctor, allDoctors } = useDoctorContext();
+  const [selectedDoctorSlug, setSelectedDoctorSlug] = useState<string | 'all'>(
+    activeDoctor?.slug ?? 'all',
+  );
 
-  const loading = stats === undefined;
+  const statsDoctor = selectedDoctorSlug === 'all' ? null : selectedDoctorSlug;
+
+  const stats = useQuery(
+    api.consultations.getTodayStats,
+    statsDoctor ? { doctorId: statsDoctor } : 'skip',
+  );
+
+  const loading = statsDoctor ? stats === undefined : false;
+  const displayName =
+    selectedDoctorSlug === 'all'
+      ? 'All Doctors'
+      : allDoctors.find((d) => d.slug === selectedDoctorSlug)?.name ?? '';
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -59,10 +72,23 @@ export default function HistoryView() {
               Consultation History
             </h1>
             <p className="text-[12px] text-gray-400 mt-0.5">
-              {DOCTOR.doctorName} &middot; RESTORE Health &amp; Care
+              {displayName} &middot; RESTORE Health &amp; Care
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            {/* Doctor filter */}
+            <select
+              value={selectedDoctorSlug}
+              onChange={(e) => setSelectedDoctorSlug(e.target.value)}
+              className="text-[13px] text-gray-700 border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400 bg-gray-50/50"
+            >
+              {allDoctors.map((d) => (
+                <option key={d.slug} value={d.slug}>
+                  {d.name}
+                </option>
+              ))}
+              <option value="all">All Doctors</option>
+            </select>
             <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-600 bg-emerald-50 rounded-full px-2.5 py-1 font-medium">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               Live
@@ -71,52 +97,57 @@ export default function HistoryView() {
         </div>
       </header>
 
-      {/* Stats Bar */}
-      <div className="px-6 pt-5 pb-1 shrink-0">
-        <div className="grid grid-cols-4 gap-3">
-          <StatCard
-            label="Today's Consultations"
-            value={loading ? '—' : String(stats.totalConsultations)}
-            accent="slate"
-          />
-          <StatCard
-            label="Avg. Duration"
-            value={loading ? '—' : formatDuration(stats.averageDurationSeconds)}
-            accent="slate"
-          />
-          <StatCard
-            label="On Time"
-            value={loading ? '—' : `${stats.percentOnTime}%`}
-            sub={loading ? undefined : `${100 - stats.percentOnTime}% overtime`}
-            accent={
-              loading
-                ? 'slate'
-                : stats.percentOnTime >= 70
-                  ? 'emerald'
-                  : stats.percentOnTime >= 40
-                    ? 'amber'
-                    : 'red'
-            }
-          />
-          <StatCard
-            label="Most Used Type"
-            value={
-              loading
-                ? '—'
-                : stats.mostUsedAppointmentType
-                  ? stats.mostUsedAppointmentType
-                      .replace(/_/g, ' ')
-                      .replace(/\b\w/g, (c: string) => c.toUpperCase())
-                  : 'None'
-            }
-            accent="slate"
-          />
+      {/* Stats Bar — only shown when a specific doctor is selected */}
+      {statsDoctor && (
+        <div className="px-6 pt-5 pb-1 shrink-0">
+          <div className="grid grid-cols-4 gap-3">
+            <StatCard
+              label="Today's Consultations"
+              value={loading ? '—' : String(stats!.totalConsultations)}
+              accent="slate"
+            />
+            <StatCard
+              label="Avg. Duration"
+              value={loading ? '—' : formatDuration(stats!.averageDurationSeconds)}
+              accent="slate"
+            />
+            <StatCard
+              label="On Time"
+              value={loading ? '—' : `${stats!.percentOnTime}%`}
+              sub={loading ? undefined : `${100 - stats!.percentOnTime}% overtime`}
+              accent={
+                loading
+                  ? 'slate'
+                  : stats!.percentOnTime >= 70
+                    ? 'emerald'
+                    : stats!.percentOnTime >= 40
+                      ? 'amber'
+                      : 'red'
+              }
+            />
+            <StatCard
+              label="Most Used Type"
+              value={
+                loading
+                  ? '—'
+                  : stats!.mostUsedAppointmentType
+                    ? stats!.mostUsedAppointmentType
+                        .replace(/_/g, ' ')
+                        .replace(/\b\w/g, (c: string) => c.toUpperCase())
+                    : 'None'
+              }
+              accent="slate"
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Table */}
       <div className="flex-1 px-6 py-4 min-h-0">
-        <HistoryTable />
+        <HistoryTable
+          doctorSlug={selectedDoctorSlug === 'all' ? null : selectedDoctorSlug}
+          showDoctorColumn={selectedDoctorSlug === 'all'}
+        />
       </div>
     </div>
   );
