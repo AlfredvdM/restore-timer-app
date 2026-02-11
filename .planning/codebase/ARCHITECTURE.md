@@ -4,228 +4,367 @@
 
 ## Pattern Overview
 
-**Overall:** Multi-layered Electron desktop application with React frontend, real-time timer engine, and Convex backend (serverless database).
+**Overall:** Electron + React desktop application with layered architecture separating main process (Node.js), preload bridge (IPC), and renderer process (React UI).
 
 **Key Characteristics:**
-- Electron main process manages window lifecycle, tray, and IPC
-- React frontend with hooks for state management and UI rendering
-- Pure timer engine (`TimerEngine` class) independent of React
-- Convex provides data persistence and real-time sync
-- Dual entry points: main timer widget and history window
-- Offline-first design with localStorage fallback
-- CSS-in-JSX using Tailwind for styling
+- Custom frameless window with drag-enabled title bar
+- IPC-based main/renderer communication for window management
+- State-driven UI that dynamically resizes window based on widget state
+- Convex backend for data persistence and real-time sync
+- Doctor-scoped consultation tracking with colour-coded timer phases
+- Advanced window resizing architecture: state-driven dimensions, minimised bar mode, position persistence
 
 ## Layers
 
-**Electron (Main Process):**
-- Purpose: Manage native windows, system tray, and cross-platform lifecycle
-- Location: `electron/main.ts`, `electron/preload.ts`
-- Contains: Window creation, IPC handlers, tray menu, desktop integration
-- Depends on: Electron APIs
-- Used by: React renderer processes via IPC bridge
-- Responsibilities: Enforce always-on-top, handle window resizing, manage history window, detect timer state for tray
+**Electron Main Process:**
+- Location: `electron/main.ts`
+- Purpose: Window lifecycle, tray integration, file I/O, OS-level events, IPC request handling
+- Contains: Icon generation, window creation, system tray menu, IPC listeners for window operations
+- Depends on: Electron API, Node.js fs/path modules
+- Used by: Preload layer (via IPC), OS events
+- Key Responsibilities: Enforce window bounds, validate window positions, manage tray updates, handle window show/hide
 
 **Preload Bridge:**
-- Purpose: Securely expose Electron APIs to renderer context
 - Location: `electron/preload.ts`
-- Contains: `electronAPI` object with typed IPC methods
-- Exposes: Window control, position tracking, navigation, quit notifications
-- Consumed by: React components via `window.electronAPI`
+- Purpose: Safe IPC abstraction exposing electronAPI to renderer context with context isolation
+- Contains: Context-isolated electronAPI object with send/invoke/on methods
+- Depends on: Electron ipcRenderer, context isolation
+- Used by: React components (via window.electronAPI)
+- Methods exposed: Window control (minimize, restore, close), sizing (setWindowSize, setWindowMinSize, minimiseToBar, restoreFromBar), positioning (setWindowPosition, getWindowPosition), navigation (onNavigate, onWindowMoved), state notifications (setTimerRunning, setActiveDoctor)
 
-**React Renderer (Frontend):**
-- Purpose: Render UI and manage timer state transitions
-- Location: `src/main.tsx` (entry), `src/App.tsx` (root), components in `src/components/`
-- Contains: UI components, hooks, state management
-- Depends on: React, Convex SDK, electron preload API
-- Used by: Electron main process (loads HTML)
+**React UI Layer (Renderer Process):**
+- Location: `src/components/*.tsx`, `src/hooks/`, `src/contexts/`
+- Purpose: User interface, timer logic, state management, Convex integration, window resize orchestration
+- Contains: Components, hooks, context providers, business logic, window dimension calculations
+- Depends on: React, Convex, electronAPI
+- Used by: Browser DOM, window events
+- Key Responsibilities: Drive window resizing via widget state, persist window position to Convex, listen to window move events, manage doctor/timer state
 
-**State Management Layer:**
-- Purpose: Coordinate timer logic, UI state, and data persistence
-- Key files:
-  - `src/hooks/useTimer.ts`: Widget state machine and timer control
-  - `src/hooks/useConvexData.ts`: Backend data queries and mutations, offline handling
-- Patterns: React hooks with refs for closure captures, lazy engine initialization
-
-**Timer Engine (Business Logic):**
-- Purpose: Pure timer countdown logic independent of React
+**Timer Engine:**
 - Location: `src/lib/timer-engine.ts`
-- Contains: Timer state (`idle|running|paused|overtime`), elapsed/remaining calculations, phase transitions
-- Depends on: `Date.now()` for accuracy, optional callbacks
-- Used by: `useTimer` hook to drive state updates
-- Responsibilities: Tick tocking, pause/resume tracking, pause-time exclusion from duration
+- Purpose: Pure countdown logic independent of React/UI
+- Contains: State machine (idle/running/paused/overtime), elapsed/remaining calculations, callbacks
+- Depends on: Native Date API, type definitions only
+- Used by: `useTimer` hook
+- Testable: Unit tests in `src/lib/timer-engine.test.ts`
 
-**UI Components Layer:**
-- Purpose: Render specific UI states and handle user input
-- Location: `src/components/`
-- Organized by: Widget state (Running, Paused, Approval, Settings, etc.)
-- Components:
-  - `TimerWidget.tsx`: Root widget orchestrator (3 screens: idle/setup, running, approval)
-  - `TimerDisplay.tsx`: Shows elapsed time and consultation details
-  - `TimerControls.tsx`: Pause/Resume/Stop buttons
-  - `NewTimerForm.tsx`: Appointment type and duration selection
-  - `ApprovalScreen.tsx`: Review and save consultation record
-  - `SettingsView.tsx`: Sound, thresholds, appointment types
-  - `MinimisedWidget.tsx`: Collapsed timer bar
-  - `HistoryView.tsx`: Consultation history and stats
-  - `CustomTitleBar.tsx`: Window title and minimize button
-
-**Utility Libraries:**
-- Purpose: Pure functions for color, sound, and calculations
-- Location: `src/lib/`
-- Files:
-  - `colour-calculator.ts`: Phase-based interpolation (green→yellow→red→deep-red)
-  - `sound.ts`: Audio playback (chime types)
-  - `timer-engine.test.ts`, `colour-calculator.test.ts`: Vitest tests
-
-**Types & Constants:**
-- Purpose: Centralized type definitions and hardcoded defaults
-- Location: `src/types/index.ts`
-- Contains: `TimerState`, `TimerPhase`, `WidgetState`, `Consultation`, `TimerSettings`, `AppointmentType`
-- Provides: `DOCTOR` (hardcoded MVP identity), `STATE_HEIGHTS`, `APPOINTMENT_TYPE_OPTIONS`
-
-**Convex Backend:**
-- Purpose: Serverless backend for data persistence and real-time sync
-- Location: `convex/`
-- Contains:
-  - `schema.ts`: Table definitions (consultations, appointmentTypes, timerSettings)
-  - `consultations.ts`: Save and query consultation records
-  - `appointmentTypes.ts`: List, seed, and manage appointment types
-  - `settings.ts`: Per-user timer preferences
-- Accessed via: Convex React hooks (`useQuery`, `useMutation`)
+**Data Layer:**
+- Location: `convex/` (backend), `src/hooks/useConvexData.ts` (client)
+- Purpose: Persistent consultation history, appointment types, user settings, window position storage
+- Contains: Schema definitions, mutation/query handlers
+- Depends on: Convex backend
+- Used by: React components for data fetch/mutations
+- Window Position Persistence: Stored via `settings.updateWindowPosition()` mutation with userId and x/y coordinates
 
 ## Data Flow
 
-**Timer Start → Completion:**
+**Window Resizing (Core Architecture - State-Driven):**
 
-1. User clicks "New Consultation" → `goToSetup()` changes `widgetState` to `setup`
-2. Form submission → `startTimer()` initializes `TimerEngine.start()` and sets `widgetState` to `running`
-3. Engine ticks every 1s → fires `onTick` callback → `setRemainingSeconds`, `setPercentComplete`
-4. Color phase callback syncs color state → UI rerenders with new background
-5. When countdown hits zero → `onOvertime` fires → sound plays, state becomes `overtime`
-6. User clicks Stop → pauses engine, captures snapshot, enters `approval` state
-7. User clicks Save → `save()` stops engine, returns final `TimerSnapshot`, calls `saveConsultationData` mutation
-8. Convex mutation persists to database, state returns to `idle`
+1. **State Change Trigger** (React)
+   - `useTimer` hook detects widget state change (idle → setup, running, approval, minimised, doctorSelect, settings)
+   - Component renders with appropriate content size requirements
+   - Example: entering 'setup' state requires 280x350 minimum, 'running' requires 280x230
 
-**Offline Handling:**
+2. **Size Calculation & Communication** (React → IPC)
+   - `TimerWidget.tsx` `useEffect` watches `timer.widgetState`
+   - Maps state to minimum dimensions from constants in `src/types/index.ts`:
+     - `STATE_MIN_WIDTHS`: idle=280, setup=280, running=280, approval=280, minimised=200, settings=280, doctorSelect=280
+     - `STATE_MIN_HEIGHTS`: idle=175, setup=350, running=230, approval=490, minimised=40, settings=520, doctorSelect=280
+   - Three resize patterns:
+     - **Normal state transitions (line 196-197):** Calls `window.electronAPI?.setWindowMinSize(width, height)`
+     - **Minimised transition (line 191):** Calls `window.electronAPI?.minimiseToBar()`
+     - **Restore from minimised (line 194):** Calls `window.electronAPI?.restoreFromBar(width, height)`
+     - **Settings pre-save (line 123, 411):** Saves current size to ref, restores on close (line 342)
+   - Doctor selector handles dynamic height: `Math.max(STATE_MIN_HEIGHTS.doctorSelect, Math.min(400, contentHeight))` capped at 400px with scrolling
 
-- `useConvexData` tracks online/offline via mutation failure grace period (3s)
-- Consultation saves queued to localStorage if offline (key: `restore-timer-pending-saves`)
-- On reconnect, pending saves are retried
-- Fallback appointment types provided if Convex unavailable
+3. **IPC Routing & Handler Execution** (Main Process)
+   - Preload methods map to ipcMain listeners:
+     - `setWindowMinSize(minW, minH)` → `ipcMain.on('set-window-min-size', handler)`
+     - `minimiseToBar()` → `ipcMain.on('minimise-to-bar', handler)`
+     - `restoreFromBar(w, h)` → `ipcMain.on('restore-from-bar', handler)`
+     - `setWindowSize(w, h)` → `ipcMain.on('set-window-size', handler)`
+     - `setWindowPosition(x, y)` → `ipcMain.on('set-window-position', handler)`
 
-**Window State Management:**
+4. **Main Process Window Bounds Management** (electron/main.ts)
+   - **set-window-min-size handler (lines 542-563):**
+     ```typescript
+     mainWindow.setMinimumSize(minW, minH);
+     const [currentW, currentH] = mainWindow.getSize();
+     if (currentW < minW || currentH < minH) {
+       mainWindow.setBounds({
+         x: currentX,
+         y: currentY,
+         width: Math.max(currentW, minW),
+         height: Math.max(currentH, minH),
+       }, true); // animate: true
+     }
+     ```
+     - Sets minimum allowed dimensions
+     - Grows window if current size is smaller than new minimum
+     - Preserves current position (x, y unchanged)
 
-- `TimerWidget` tracks `widgetState` and adjusts window height via `electronAPI.setWindowSize()`
-- Height mapping: `STATE_HEIGHTS[state]` (e.g., idle=175px, running=230px, settings=520px)
-- Position saved to Convex after user moves window (500ms debounce)
-- Always-on-top setting applied on mount
+   - **minimise-to-bar handler (lines 579-589):**
+     ```typescript
+     mainWindow.setMinimumSize(200, 40);
+     mainWindow.setMaximumSize(600, 40);
+     mainWindow.setBounds({ x: currentX, y: currentY, width: 200, height: 40 }, true);
+     ```
+     - Locks exact 200x40 dimensions by setting max-size equal to min-size
+     - Prevents user from expanding beyond bar height
+     - Preserves x position so bar stays in place horizontally
 
-**History Window:**
+   - **restore-from-bar handler (lines 591-605):**
+     ```typescript
+     mainWindow.setMaximumSize(0, 0); // Remove lock
+     mainWindow.setMinimumSize(280, height);
+     mainWindow.setBounds({ x: currentX, y: currentY, width, height }, true);
+     ```
+     - Removes max-size lock (0, 0 means unlimited)
+     - Restores to requested dimensions
+     - Re-applies minimum size constraints
 
-- Separate React root in `history.html`
-- `HistoryApp` → `HistoryView` renders consultation table and stats
-- Queries `getTodayStats` (aggregated data for current doctor)
+   - **set-window-size handler (lines 531-540):**
+     ```typescript
+     mainWindow.setMinimumSize(width, height);
+     mainWindow.setBounds({ x: currentX, y: currentY, width, height }, true);
+     ```
+     - Direct dimension setter (used for restoring from settings)
+
+   - **set-window-position handler (lines 566-577):**
+     ```typescript
+     if (isPositionOnScreen(x, y)) {
+       mainWindow.setPosition(Math.round(x), Math.round(y));
+     } else {
+       const pos = getCentredPosition();
+       mainWindow.setPosition(pos.x, pos.y);
+     }
+     ```
+     - Validates position against all displays' work areas
+     - If off-screen, re-centres on primary display (320x175 window)
+
+5. **Position Persistence via Events** (Electron → Convex)
+   - **Window move event listener (lines 291-300):**
+     ```typescript
+     mainWindow.on('moved', () => {
+       if (moveTimeout) clearTimeout(moveTimeout);
+       moveTimeout = setTimeout(() => {
+         const [x, y] = mainWindow.getPosition();
+         mainWindow.webContents.send('window-moved', { x, y });
+       }, 500); // Debounced
+     });
+     ```
+     - Fires when user drags window
+     - 500ms debounce prevents excessive updates during drag
+     - Sends position to renderer via IPC
+
+   - **Renderer listener in TimerWidget (lines 83-98):**
+     ```typescript
+     const handler = (position: { x: number; y: number }) => {
+       updateWindowPositionMutation({
+         userId: slug,
+         x: position.x,
+         y: position.y,
+       }).catch(() => {});
+     };
+     window.electronAPI?.onWindowMoved(handler);
+     ```
+     - Async mutation to persist position per doctor
+     - Silently fails if offline (cached by Convex)
+
+   - **Position restore on startup (src/components/TimerWidget.tsx):**
+     - Settings loaded via `useConvexData()` hook
+     - Not explicitly restored to window (main process does cold-start positioning)
+     - Could be enhanced to restore from Convex if desired
+
+**Consultation Lifecycle:**
+
+1. **Timer Start** (UI)
+   - User selects appointment type, patient name, duration in `NewTimerForm`
+   - `handleStart()` calls `timer.startTimer()` with `{ patientName, typeCode, typeName, durationMinutes }`
+
+2. **Timer Running** (Engine Tick)
+   - `TimerEngine` increments every 1000ms via `setInterval`
+   - Calculates percent-complete = (elapsed - paused) / total
+   - Phase (green/yellow/red/overtime) determined by thresholds
+   - `onTick` callback updates React state: remainingSeconds, elapsedSeconds, percentComplete, overtimeSeconds
+
+3. **Phase-Based Colour** (UI Rendering)
+   - `useTimer` calls `getTimerColour(percentComplete, yellowThreshold, redThreshold)` from `src/lib/colour-calculator.ts`
+   - Returns `{ background: string, text: string }`
+   - Background gradient transitions via CSS `transition: background-color 1s ease`
+   - Examples: green (#10B981) at 0%, yellow (#F59E0B) at 60%, red (#EF4444) at 90%+
+
+4. **Stop & Save** (Approval → Persistence)
+   - User clicks Stop → `timer.stop()` pauses engine, captures `approvalSnapshot` without destroying engine
+   - Enters 'approval' widget state, shows `ApprovalScreen` component
+   - User confirms save → `timer.save()` fully stops engine, returns final `TimerSnapshot`
+   - `handleSave()` calls `saveConsultationData()` mutation → Convex persists to consultations table
 
 ## State Management
 
-**Widget State Machine (useTimer):**
-```
-idle ← setup ← cancelled
-↓         ↓
-setup → running → stop → approval → save → idle
-            ↓              ↓
-          paused ←— resume
-            ↓
-          overtime
-```
+**Widget State** (UI container state):
+- Single source of truth in `useTimer` hook: `widgetState: WidgetState`
+- Types: 'idle' | 'setup' | 'running' | 'paused' | 'overtime' | 'approval' | 'minimised' | 'settings' | 'doctorSelect'
+- Location: `src/types/index.ts` line 13
+- Drives: component rendering, window dimensions, title bar style, colour background, IPC calls
+- Transitions: Orchestrated by action callbacks (goToSetup, startTimer, pause, resume, stop, save, discard, minimise)
 
-**Vertical minimise/restore:**
-```
-any state → minimised → restore to previous state
-```
+**Timer Engine State** (countdown logic):
+- Managed by `TimerEngine` class via `_state` private field: 'idle' | 'running' | 'paused' | 'overtime'
+- Separate from widget state to enable approval screen (engine paused but not destroyed, widget in 'approval')
+- Allows "Back" button to resume timer from exact point
 
-**Consultation Info:**
-- Immutable during timer lifecycle
-- Captured at `startTimer()`: patient name, appointment type, duration, start timestamp
-- Passed to approval and used for saving
+**Doctor Context** (global user selection):
+- Location: `src/contexts/DoctorContext.tsx`
+- Provides: `activeDoctor` (current doctor), `allDoctors` (list), `selectDoctor(slug)`, `clearDoctor()`
+- Persisted: localStorage `restore-active-doctor`, sessionStorage `restore-session-alive`
+- Session detection: Cold-start clears selection (shows doctor selector), hide-to-tray preserves selection
+- Used by: All features (scopes consultations, settings, appointment types to this doctor)
 
-**Engine State (TimerEngine):**
-- Separate from widget state
-- Tracks: `running|paused|overtime|idle`
-- Engine persists in memory to allow "Back" from approval (paused, not stopped)
+**Convex Real-time Sync**:
+- `useConvexData()` hook subscribes to backend via `useQuery(api.settings.getSettingsForUser(slug))`
+- Automatically refetches when `activeDoctor` changes
+- Optimistic updates via `useMutation()` (immediate UI update, async backend persistence)
+- Offline: Tracks mutation failures, queues saves to localStorage, retries on reconnect
+
+**Window Resize State** (Imperative):
+- No local state, all driven by `widgetState` changes
+- Pre-settings-size saved to `preSettingsSizeRef` to restore on settings close
+- Pre-minimise state saved to `preMinimiseState` in useTimer to restore from minimised
 
 ## Key Abstractions
 
-**TimerEngine:**
-- Pure, framework-agnostic countdown engine
-- State: start time, pause timestamps, paused duration, total requested duration
-- Accuracy: Uses `Date.now()` not `setInterval` for elapsed calculation
-- Callbacks: `onTick`, `onThresholdChange`, `onOvertime`, `onComplete`
-- Example usage: `engine.start(900); engine.pause(); engine.getSnapshot().remainingSeconds`
+**TimerEngine (Pure Business Logic):**
+- Purpose: Countdown state machine independent of React/Electron
+- Location: `src/lib/timer-engine.ts`
+- Responsibilities: Start, pause, resume, stop, calculate snapshots, fire callbacks
+- Testable: Yes, unit tests in `src/lib/timer-engine.test.ts`
+- Pattern: Class-based with callbacks (onTick, onOvertime, onComplete), getters for snapshot/state
+- Accuracy: Uses Date.now() for elapsed calculation, setInterval only for scheduling ticks
+- Pause tracking: Subtracts paused time from elapsed to get actual elapsed duration
+- Used by: `useTimer` hook wraps it, React components consume via hook
 
-**TimerPhase:**
-- Represents color state based on `percentComplete` and thresholds
-- Values: `green|yellow|red|overtime`
-- Drives CSS background color via `getTimerColour()` interpolation
+**useTimer Hook (React Integration):**
+- Purpose: Expose TimerEngine to React components with widget state sync
+- Location: `src/hooks/useTimer.ts`
+- Responsibilities: Lazy-init engine, manage widget state, coordinate approval screen, track minimise/restore
+- Returns: Timer data (remainingSeconds, displayTime), consultation info, approval snapshot, actions (goToSetup, startTimer, pause, resume, stop, save, discard, goBack, minimise, restoreFromMinimised)
+- Pattern: Custom hook with ref-based engine persistence, state-based visual updates, closure refs for option caching
+- Minimise/Restore: Saves previous state in `preMinimiseState` ref, restores on expand
 
-**ConsultationInfo:**
-- Data captured when timer starts
-- Contains: patient name, appointment type (code and display name), target duration, start timestamp
-- Persisted when saved, used to generate summary in approval
+**Colour Calculator (Visual Phase Mapping):**
+- Location: `src/lib/colour-calculator.ts`
+- Purpose: Map percent-complete to RGB colours and text contrast
+- Input: percentComplete (0.0-1.0+), yellowThreshold, redThreshold
+- Output: `{ background: string, text: string }`
+- Pattern: Pure function, tested in `src/lib/colour-calculator.test.ts`
+- Phases: green (0%), yellow (60% threshold), red (90% threshold), overtime (>100%)
 
-**WidgetState:**
-- UI state superset (timer + setup/approval/settings/minimised)
-- Values: `idle|setup|running|paused|overtime|approval|minimised|settings`
-- Drives which component renders and window dimensions
+**ElectronAPI Type Bridge:**
+- Location: `src/types/electron.d.ts`
+- Purpose: Type-safe window.electronAPI namespace with context isolation
+- Provides: Send methods (minimizeWindow, setWindowSize, setWindowMinSize, minimiseToBar, restoreFromBar, setWindowPosition, closeApp, hideWindow, setAlwaysOnTop), Invoke methods (getWindowPosition), On methods (onWindowMoved, onNavigate, onRequestSaveAndQuit), cleanup (removeAllListeners)
+- Pattern: Interface declaration merged into Window global, safe for contextIsolation: true
+
+**DoctorContext Provider:**
+- Location: `src/contexts/DoctorContext.tsx`
+- Purpose: Global doctor selection state with Convex sync
+- Responsibilities: Load all doctors via useQuery, persist selection, session detection for cold-start
+- Session detection: Uses `sessionStorage` to track cold-start vs hide-to-tray resume (hide-to-tray preserves state)
+- Pattern: React Context + useQuery for backend sync
+
+**MinimumSize State Management:**
+- Pattern: Renderer tracks required dimensions for current state, sends to main process, main process enforces via setMinimumSize + setBounds
+- Two-way binding: Renderer can request, main process validates and applies
+- Example: 'setup' state requires 280x350, 'minimised' requires 200x40
+- Dynamic case (doctorSelect): Renderer calculates height based on doctor count, caps at 400px
 
 ## Entry Points
 
-**Main Window:**
-- Location: `src/main.tsx`
-- Triggers: App launch (Electron loads `index.html`)
-- Responsibilities: Create Convex client, wrap in ConvexProvider, render `App`
-- `App.tsx` renders `TimerWidget`
+**Main Window (Consultation Timer):**
+- Location: `src/main.tsx` (React entry), `index.html` (HTML entry)
+- Triggers: App launch, show from tray, Electron loads this by default
+- Responsibilities: Doctor selection, consultation flow, settings, timer display
+- Root component: `TimerWidget` wraps all UI state, uses `useTimer`, `useDoctorContext`, `useConvexData`
+- Window creation: `electron/main.ts` createWindow() at app.whenReady()
 
 **History Window:**
-- Location: `src/history.tsx`
-- Triggers: User clicks History in tray or settings
-- Responsibilities: Create separate React root, render `HistoryApp`
-- `electron/main.ts` creates second BrowserWindow, loads `history.html`
+- Location: `src/history.tsx` (React entry), `history.html` (HTML entry)
+- Triggers: "History" button in tray menu or main window, user clicks "History"
+- Responsibilities: Display consultation records in table, show daily stats
+- Root component: `HistoryApp` (separate React app, separate Convex provider, separate Vite entry point via vite.config.mts)
+- Window creation: `electron/main.ts` createHistoryWindow() on demand, reuses if already open
 
-**Electron Main:**
+**Main Process:**
 - Location: `electron/main.ts`
-- Triggers: App start (before any renderer)
-- Responsibilities: Create main window, history window factory, tray, set up IPC, handle window lifecycle
+- Triggers: Electron app launch (automatic, before any renderer)
+- Responsibilities: Create windows, manage tray, handle IPC listeners, icon generation, lifecycle events
+- Initialization: `app.whenReady().then(() => { createWindow(); createTray(); })`
 
 ## Error Handling
 
-**Strategy:** Graceful degradation with offline fallback
+**Strategy:** Defensive with try-catch at mutation boundaries, silent failures in non-critical paths, user confirmation for destructive ops.
 
 **Patterns:**
-- `useConvexData` catches mutation errors, queues offline, retries
-- Component errors don't crash app (React StrictMode)
-- Missing Convex data → use `FALLBACK_TYPES` and default settings
-- Timer engine errors: throw if duration ≤ 0 (precondition check)
-- IPC sends are fire-and-forget with catch for window destruction
+
+- **Convex Mutations:** Wrapped in try-catch, `.catch(() => {})` for non-blocking operations (e.g., position save)
+  ```typescript
+  updateWindowPositionMutation({...}).catch(() => {});
+  ```
+
+- **IPC Calls:** No error handling on sender side (send-only), errors in main process non-blocking
+  ```typescript
+  window.electronAPI?.setWindowMinSize(...); // Fire and forget
+  ```
+
+- **Window Position Validation:** If saved position off-screen, re-centre
+  ```typescript
+  if (isPositionOnScreen(x, y)) {
+    mainWindow.setPosition(x, y);
+  } else {
+    const pos = getCentredPosition();
+    mainWindow.setPosition(pos.x, pos.y);
+  }
+  ```
+
+- **Timer Operations:** Defensive state checks before mutations
+  ```typescript
+  if (engine.state === 'running' || engine.state === 'overtime') {
+    engine.pause();
+  }
+  ```
 
 ## Cross-Cutting Concerns
 
-**Logging:** `console.log/error` in development, can be replaced with Sentry/Convex logging
+**Logging:** console.log for development, no structured logging framework. Errors swallowed silently in production catch blocks.
 
 **Validation:**
-- TypeScript types enforce structure
-- Convex schema validates server-side
-- Form submission validates appointment type and duration exist
+- Window dimensions: `minWidth: 200, minHeight: 40` enforced at main process
+- Appointment duration: positive numbers enforced in form via number input
+- Doctor selection: required before starting consultation
+- Position: validated against display work areas before applying
 
-**Authentication:**
-- MVP hardcodes `DOCTOR = { userId: "dr-annetjie", doctorName: "Dr Annetjie van der Nest" }`
-- All data scoped to this user ID
-- Future: Replace with real identity provider
+**Authentication:** None (localStorage + sessionStorage trusted, no user login needed)
 
-**Time Zone:**
-- `consultationDate` stored as ISO string (date part, time part ignored)
-- Used for grouping history by date
-- All times in local timezone (app runs locally)
+**Window Management Across States:**
+- **idle/setup/approval/settings:** Fixed minimum dimensions from STATE_MIN_HEIGHTS/STATE_MIN_WIDTHS, user can resize larger
+- **minimised:** Exact 200x40, max-size locked to prevent expansion, preserve x-position for horizontal placement
+- **doctorSelect:** Dynamic height based on doctor count (138px base + 52px per doctor, capped at 400px with scrolling)
+- **running/paused/overtime:** 280x230 minimum, coloured background transitions smoothly
+- Resize animation: Electron `setBounds(..., true)` animates transitions
+
+**Position Persistence:**
+- Main process emits `window-moved` after 500ms debounce on user drag
+- Renderer listener fires Convex mutation asynchronously
+- Persisted per-doctor (scoped by userId in settings table)
+- Cold-start: Main process positions at screenWidth - 340, y: 20 as default (top-right corner)
+- Cross-screen validation: Checks if position is within any display's workArea before applying
+
+**macOS-Specific Behaviours:**
+- Window close → hide to tray (not quit) via preventDefault() and hide()
+- Always-on-top uses `'floating'` level for proper stacking (line 276)
+- Dock icon generated dynamically if no icon.png file, or loaded from build/icon.png
+- Title bar uses native macOS traffic light controls via custom frameless window with custom title bar component
 
 ---
 

@@ -18,6 +18,8 @@
 ```bash
 npm test                # Run all tests (if script configured)
 npm run build           # Builds TypeScript (tsc) before test
+vitest                  # Run tests (if vitest installed globally)
+vitest --watch         # Watch mode
 ```
 
 **Config File (`vitest.config.mts`):**
@@ -55,6 +57,7 @@ src/lib/
 ```typescript
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { TimerEngine } from './timer-engine';
+import type { TimerPhase, TimerSnapshot } from '../types';
 
 describe('TimerEngine', () => {
   // ── Setup ──────────────────────────────────────
@@ -72,11 +75,6 @@ describe('TimerEngine', () => {
       const engine = new TimerEngine();
       expect(engine.state).toBe('idle');
     });
-
-    it('throws when starting with 0 or negative duration', () => {
-      const engine = new TimerEngine();
-      expect(() => engine.start(0)).toThrow('Duration must be positive');
-    });
   });
 
   // ── Test suite 2 ───────────────────────────────
@@ -91,47 +89,11 @@ describe('TimerEngine', () => {
 **Patterns:**
 - **Setup**: `beforeEach()` to initialize fake timers or state
 - **Teardown**: `afterEach()` to restore real timers
-- **Grouping**: Logical subsections use nested `describe()` blocks with section headers
+- **Grouping**: Logical subsections use nested `describe()` blocks with section headers (`// ──`)
 - **Assertion**: Direct `expect()` calls on return values or state mutations
+- **Helper Functions**: Extracted helper (e.g., `function advance(ms)`) for time advancement
 
-## Test Structure Examples
-
-**From `timer-engine.test.ts` - Basic State Assertion:**
-```typescript
-it('starts in idle state', () => {
-  const engine = new TimerEngine();
-  expect(engine.state).toBe('idle');
-});
-```
-
-**From `timer-engine.test.ts` - Error Assertion:**
-```typescript
-it('throws when starting with 0 or negative duration', () => {
-  const engine = new TimerEngine();
-  expect(() => engine.start(0)).toThrow('Duration must be positive');
-  expect(() => engine.start(-5)).toThrow('Duration must be positive');
-});
-```
-
-**From `timer-engine.test.ts` - Callback Testing:**
-```typescript
-it('fires onTick with correct remaining/elapsed values', () => {
-  const ticks: { remaining: number; elapsed: number; pct: number }[] = [];
-  const engine = new TimerEngine({
-    callbacks: {
-      onTick: (remaining, elapsed, percentComplete) =>
-        ticks.push({ remaining, elapsed, pct: percentComplete }),
-    },
-  });
-
-  engine.start(10);
-  expect(ticks.length).toBe(1);
-  expect(ticks[0].remaining).toBe(10);
-  expect(ticks[0].elapsed).toBe(0);
-});
-```
-
-## Mocking & Timers
+## Mocking
 
 **Framework:** Vitest `vi` namespace for time and callback mocking
 
@@ -139,14 +101,14 @@ it('fires onTick with correct remaining/elapsed values', () => {
 ```typescript
 // From timer-engine.test.ts
 beforeEach(() => {
-  vi.useFakeTimers();  // Enable fake timers
+  vi.useFakeTimers();  // Enable fake timers for deterministic testing
 });
 
 afterEach(() => {
   vi.useRealTimers();  // Restore real timers
 });
 
-// Advance time synchronously
+// Helper to advance time synchronously
 function advance(ms: number) {
   vi.advanceTimersByTime(ms);
 }
@@ -169,17 +131,38 @@ it('fires onOvertime exactly once', () => {
   advance(6000);  // Well past overtime
   expect(count).toBe(1);  // Verify callback fired exactly once
 });
+
+it('fires onTick with correct remaining/elapsed values', () => {
+  const ticks: { remaining: number; elapsed: number; pct: number }[] = [];
+  const engine = new TimerEngine({
+    callbacks: {
+      onTick: (remaining, elapsed, percentComplete) =>
+        ticks.push({ remaining, elapsed, pct: percentComplete }),
+    },
+  });
+
+  engine.start(10);
+  expect(ticks.length).toBe(1);
+  expect(ticks[0].remaining).toBe(10);
+  expect(ticks[0].elapsed).toBe(0);
+
+  advance(3000);
+  const last = ticks[ticks.length - 1];
+  expect(last.elapsed).toBe(3);
+  expect(last.remaining).toBe(7);
+});
 ```
 
 **What to Mock:**
 - Timers (always — use `vi.useFakeTimers()` for deterministic testing)
-- Callbacks/side effects (track calls with captured variables)
+- Callbacks/side effects (track calls with captured variables like count or arrays)
 - Time-dependent state (use `vi.advanceTimersByTime()` to control flow)
 
 **What NOT to Mock:**
 - Pure utility functions (`colour-calculator.ts` has no mocks)
 - Internal class methods (test through public API only)
 - Type definitions
+- React components (would require React Testing Library, not currently configured)
 
 ## Fixtures and Factories
 
@@ -195,6 +178,12 @@ it('returns green (#22c55e) at 0% elapsed', () => {
   expect(result.background.toLowerCase()).toBe('#22c55e');
   expect(result.text).toBe('#FFFFFF');
 });
+
+it('respects custom yellowThreshold', () => {
+  // Yellow at 40% instead of 60%
+  const result = getTimerColour(0.4, 0.4, 0.9);
+  expect(result.background.toLowerCase()).toBe('#84cc16'); // lime at yellow boundary
+});
 ```
 
 **Location:**
@@ -207,22 +196,25 @@ it('returns green (#22c55e) at 0% elapsed', () => {
 
 **View Coverage:**
 - No coverage reporting configured
-- Coverage can be added with: `vitest --coverage` (requires additional dependencies)
+- Coverage can be added with: `vitest --coverage` (requires additional dependencies like `@vitest/coverage-v8`)
 
 ## Test Types
 
 **Unit Tests:**
 - Scope: Individual functions, classes, and their methods
-- Approach: Direct invocation with inputs, assertion of outputs
-- Examples: `timer-engine.test.ts` (TimerEngine class), `colour-calculator.test.ts` (pure function)
+- Approach: Direct invocation with inputs, assertion of outputs or state changes
+- Examples:
+  - `src/lib/timer-engine.test.ts` — TimerEngine class (27 tests) covering state transitions, pause/resume, overtime, phase detection, snapshots, restarting
+  - `src/lib/colour-calculator.test.ts` — Pure colour interpolation function (9 tests) covering boundary colors, interpolation, custom thresholds, edge cases
 - Timer-based tests use fake timers to ensure deterministic execution
 
 **Integration Tests:**
 - Not present in current codebase
 - Would test hook interactions with Convex and multiple components
+- Would require React Testing Library or Enzyme
 
 **E2E Tests:**
-- Not implemented (Electron app would require specialized runner)
+- Not implemented (Electron app would require specialized runner like Playwright or Cypress)
 
 ## Common Patterns
 
@@ -304,6 +296,12 @@ it('handles edge case of 0 thresholds without crashing', () => {
   expect(result.text).toBe('#FFFFFF');
 });
 
+it('pause() is a no-op when idle', () => {
+  const engine = new TimerEngine();
+  engine.pause();  // should not throw
+  expect(engine.state).toBe('idle');
+});
+
 it('reset() returns to idle without emitting onComplete', () => {
   let completeCalled = false;
   const engine = new TimerEngine({
@@ -345,24 +343,54 @@ it('detects phase transitions at correct thresholds', () => {
 - `src/lib/colour-calculator.ts` — 9 tests covering boundary colors, interpolation, custom thresholds, edge cases
 
 **Untested Components (React layer):**
-- `src/hooks/useTimer.ts` — Hook state management not tested (requires React Testing Library or Enzyme)
-- `src/hooks/useConvexData.ts` — Convex integration not tested
+- `src/hooks/useTimer.ts` — Hook state management, callbacks, lifecycle (requires React Testing Library)
+- `src/hooks/useConvexData.ts` — Convex integration, offline scenarios (requires mocking Convex)
 - All React components (`src/components/*.tsx`) — No component tests
 - Electron main process (`electron/main.ts`) — Not tested
+- Window resizing integration (`window.electronAPI?.setWindowMinSize()` calls) — Not tested
+- Sound synthesis (`src/lib/sound.ts`) — Not tested
 
 ## Test Coverage Gaps
 
 **High-Risk Untested Areas:**
 1. **useTimer Hook**: State management, callbacks, lifecycle — critical to timer functionality
-2. **React Components**: TimerWidget, TimerDisplay, ApprovalScreen rendering and interactions
-3. **useConvexData Hook**: Convex mutations, offline persistence, settings sync
-4. **Electron Integration**: Window position, always-on-top, IPC between renderer and main
-5. **Sound Generation**: playChime() and all sound synthesis logic (`src/lib/sound.ts`)
+2. **Window Resizing**: `setWindowMinSize()`, `restoreFromBar()`, `minimiseToBar()` electron API calls and state transitions
+3. **React Components**: TimerWidget, TimerDisplay, SettingsView rendering and interactions
+4. **useConvexData Hook**: Convex mutations, offline persistence, settings sync
+5. **Electron Integration**: Window position, always-on-top, IPC between renderer and main
+6. **Sound Generation**: playChime() and all sound synthesis logic (`src/lib/sound.ts`)
 
 **Priority for Testing:**
-- Add React component tests for TimerWidget and critical displays
-- Add hook tests for useTimer state machine
-- Add integration tests for Convex offline scenarios
+1. Add integration tests for window resize behavior (state transitions trigger correct electron API calls)
+2. Add React component tests for TimerWidget and critical displays
+3. Add hook tests for useTimer state machine (especially minimise/restore transitions)
+4. Add integration tests for Convex offline scenarios
+
+## Testing Window Resize Behavior (Future)
+
+**Potential Test Pattern:**
+```typescript
+// Would require mocking window.electronAPI
+it('calls setWindowMinSize when transitioning to settings', () => {
+  const setWindowMinSizeMock = vi.fn();
+  window.electronAPI = { setWindowMinSize: setWindowMinSizeMock };
+
+  // Mount TimerWidget, trigger settings
+  // ...
+
+  expect(setWindowMinSizeMock).toHaveBeenCalledWith(280, 520);
+});
+
+it('calls minimiseToBar when state changes to minimised', () => {
+  const minimiseToBarMock = vi.fn();
+  window.electronAPI = { minimiseToBar: minimiseToBarMock };
+
+  // Mount TimerWidget, trigger minimise
+  // ...
+
+  expect(minimiseToBarMock).toHaveBeenCalled();
+});
+```
 
 ---
 
