@@ -31,7 +31,7 @@ export default function NewTimerForm({ appointmentTypes, defaultTypeCode, onStar
   };
 
   return (
-    <div className="px-4 pb-4 flex flex-col gap-3">
+    <form onSubmit={(e) => { e.preventDefault(); handleStart(); }} className="px-4 pb-4 flex flex-col gap-3">
       {/* Patient name */}
       <div>
         <label className="text-[11px] uppercase tracking-wider text-gray-400 font-medium block mb-1">
@@ -42,6 +42,7 @@ export default function NewTimerForm({ appointmentTypes, defaultTypeCode, onStar
           value={patientName}
           onChange={(e) => setPatientName(e.target.value)}
           placeholder="Patient name (optional)"
+          autoFocus
           className="
             w-full px-3 py-2 rounded-lg
             bg-gray-50 border border-gray-200
@@ -114,7 +115,7 @@ export default function NewTimerForm({ appointmentTypes, defaultTypeCode, onStar
       {/* Actions */}
       <div className="flex gap-2 mt-1">
         <button
-          onClick={handleStart}
+          type="submit"
           className="
             flex-1 py-2.5 rounded-xl
             bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800
@@ -126,6 +127,7 @@ export default function NewTimerForm({ appointmentTypes, defaultTypeCode, onStar
           Start Timer
         </button>
         <button
+          type="button"
           onClick={onCancel}
           className="
             px-4 py-2.5 rounded-xl
@@ -137,6 +139,6 @@ export default function NewTimerForm({ appointmentTypes, defaultTypeCode, onStar
           Cancel
         </button>
       </div>
-    </div>
+    </form>
   );
 }
