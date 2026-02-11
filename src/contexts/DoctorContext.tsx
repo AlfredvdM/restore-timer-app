@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import type { Doctor } from '../types';
@@ -34,10 +34,13 @@ export function DoctorProvider({ children }: { children: ReactNode }) {
 
   const isLoading = rawDoctors === undefined;
 
-  // Run migration on mount (idempotent)
+  // Run migration once on first mount (idempotent)
+  const migrationRan = useRef(false);
   useEffect(() => {
+    if (migrationRan.current) return;
+    migrationRan.current = true;
     migrateMutation().catch(() => {});
-  }, [migrateMutation]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // On mount: restore doctor from localStorage only if the process was already running
   // (hide-to-tray keeps the same React tree, so activeDoctor persists in state).

@@ -252,10 +252,12 @@ function createWindow() {
     title: "RESTORE Timer",
     width: 320,
     height: 175,
+    minWidth: 200,
+    minHeight: 40,
     x: screenWidth - 340,
     y: 20,
     frame: false,
-    resizable: false,
+    resizable: true,
     alwaysOnTop: true,
     skipTaskbar: false,
     transparent: true,
@@ -528,6 +530,7 @@ ipcMain.on("set-always-on-top", (_event, value: boolean) => {
 
 ipcMain.on("set-window-size", (_event, width: number, height: number) => {
   if (mainWindow) {
+    mainWindow.setMinimumSize(width, height);
     const [currentX, currentY] = mainWindow.getPosition();
     mainWindow.setBounds(
       { x: currentX, y: currentY, width, height },
@@ -535,6 +538,29 @@ ipcMain.on("set-window-size", (_event, width: number, height: number) => {
     );
   }
 });
+
+ipcMain.on(
+  "set-window-min-size",
+  (_event, minW: number, minH: number) => {
+    if (mainWindow) {
+      mainWindow.setMinimumSize(minW, minH);
+      // If current window is smaller than new minimums, grow to fit
+      const [currentW, currentH] = mainWindow.getSize();
+      if (currentW < minW || currentH < minH) {
+        const [currentX, currentY] = mainWindow.getPosition();
+        mainWindow.setBounds(
+          {
+            x: currentX,
+            y: currentY,
+            width: Math.max(currentW, minW),
+            height: Math.max(currentH, minH),
+          },
+          true,
+        );
+      }
+    }
+  },
+);
 
 ipcMain.on(
   "set-window-position",
@@ -552,6 +578,8 @@ ipcMain.on(
 
 ipcMain.on("minimise-to-bar", () => {
   if (mainWindow) {
+    mainWindow.setMinimumSize(200, 40);
+    mainWindow.setMaximumSize(600, 40);
     const [currentX, currentY] = mainWindow.getPosition();
     mainWindow.setBounds(
       { x: currentX, y: currentY, width: 200, height: 40 },
@@ -564,6 +592,9 @@ ipcMain.on(
   "restore-from-bar",
   (_event, width: number, height: number) => {
     if (mainWindow) {
+      // Remove the max-size lock from minimised bar
+      mainWindow.setMaximumSize(0, 0);
+      mainWindow.setMinimumSize(280, height);
       const [currentX, currentY] = mainWindow.getPosition();
       mainWindow.setBounds(
         { x: currentX, y: currentY, width, height },

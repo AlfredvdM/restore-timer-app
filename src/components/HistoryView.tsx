@@ -100,7 +100,7 @@ export default function HistoryView() {
       {/* Stats Bar — only shown when a specific doctor is selected */}
       {statsDoctor && (
         <div className="px-6 pt-5 pb-1 shrink-0">
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
             <StatCard
               label="Today's Consultations"
               value={loading ? '—' : String(stats!.totalConsultations)}

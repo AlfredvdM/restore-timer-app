@@ -9,6 +9,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.send("set-always-on-top", value),
   setWindowSize: (width: number, height: number) =>
     ipcRenderer.send("set-window-size", width, height),
+  setWindowMinSize: (minW: number, minH: number) =>
+    ipcRenderer.send("set-window-min-size", minW, minH),
+  minimiseToBar: () => ipcRenderer.send("minimise-to-bar"),
+  restoreFromBar: (width: number, height: number) =>
+    ipcRenderer.send("restore-from-bar", width, height),
   setWindowPosition: (x: number, y: number) =>
     ipcRenderer.send("set-window-position", x, y),
   getWindowPosition: () => ipcRenderer.invoke("get-window-position"),

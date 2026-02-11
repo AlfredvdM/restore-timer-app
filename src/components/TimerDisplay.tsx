@@ -22,7 +22,7 @@ export default function TimerDisplay({
     <div className="flex flex-col items-center justify-center px-4 py-3 relative">
       {/* Patient name */}
       {patientName && (
-        <p className="text-sm font-medium text-white/90 tracking-wide mb-1 truncate max-w-[280px]">
+        <p className="text-sm font-medium text-white/90 tracking-wide mb-1 truncate max-w-full">
           {patientName}
         </p>
       )}
@@ -30,13 +30,15 @@ export default function TimerDisplay({
       {/* Countdown */}
       <div className="relative">
         <p
-          className={`
-            font-mono font-bold tracking-wider text-white leading-none
-            ${isOvertime ? 'text-[52px]' : 'text-[56px]'}
-          `}
-          style={{ fontVariantNumeric: 'tabular-nums' }}
+          className="font-mono font-bold tracking-wider text-white leading-none"
+          style={{
+            fontSize: isOvertime ? 'clamp(32px, 14vw, 72px)' : 'clamp(36px, 15vw, 80px)',
+            fontVariantNumeric: 'tabular-nums',
+          }}
         >
-          {isOvertime && <span className="text-[36px] text-white/80 align-top mr-0.5">+</span>}
+          {isOvertime && (
+            <span className="text-white/80 align-top mr-0.5" style={{ fontSize: 'clamp(24px, 9vw, 48px)' }}>+</span>
+          )}
           {displayTime}
         </p>
 

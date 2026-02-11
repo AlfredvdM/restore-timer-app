@@ -133,10 +133,10 @@ export default function SettingsView({
   // Auto-resize window when manage section opens/closes
   useEffect(() => {
     if (manageOpen) {
-      // Taller window for expanded appointment types
-      window.electronAPI?.setWindowSize(320, 700);
+      // Taller minimum for expanded appointment types
+      window.electronAPI?.setWindowMinSize(280, 700);
     } else {
-      window.electronAPI?.setWindowSize(320, 520);
+      window.electronAPI?.setWindowMinSize(280, 520);
     }
   }, [manageOpen]);
 

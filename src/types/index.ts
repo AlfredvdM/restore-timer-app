@@ -12,8 +12,8 @@ export interface Doctor {
 /** Widget UI states (superset of timer states — includes setup, approval, minimised, settings, doctorSelect) */
 export type WidgetState = 'idle' | 'setup' | 'running' | 'paused' | 'overtime' | 'approval' | 'minimised' | 'settings' | 'doctorSelect';
 
-/** Window heights for each widget state */
-export const STATE_HEIGHTS: Record<WidgetState, number> = {
+/** Minimum window heights for each widget state */
+export const STATE_MIN_HEIGHTS: Record<WidgetState, number> = {
   idle: 175,
   setup: 350,
   running: 230,
@@ -22,6 +22,22 @@ export const STATE_HEIGHTS: Record<WidgetState, number> = {
   approval: 490,
   minimised: 40,
   settings: 520,
+  doctorSelect: 280,
+};
+
+/** Backward-compatible alias */
+export const STATE_HEIGHTS = STATE_MIN_HEIGHTS;
+
+/** Minimum window widths for each widget state */
+export const STATE_MIN_WIDTHS: Record<WidgetState, number> = {
+  idle: 280,
+  setup: 280,
+  running: 280,
+  paused: 280,
+  overtime: 280,
+  approval: 280,
+  minimised: 200,
+  settings: 280,
   doctorSelect: 280,
 };
 

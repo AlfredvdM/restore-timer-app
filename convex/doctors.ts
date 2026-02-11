@@ -108,8 +108,8 @@ export const updateDoctor = mutation({
   },
 });
 
-// Soft-delete a doctor
-export const deactivateDoctor = mutation({
+// Delete a doctor profile (consultation history is preserved)
+export const deleteDoctor = mutation({
   args: { slug: v.string() },
   handler: async (ctx, args) => {
     const doctor = await ctx.db
@@ -118,7 +118,17 @@ export const deactivateDoctor = mutation({
       .unique();
     if (!doctor) throw new Error("Doctor not found");
 
-    await ctx.db.patch(doctor._id, { isActive: false });
+    // Delete the doctor record
+    await ctx.db.delete(doctor._id);
+
+    // Also delete their timer settings
+    const settings = await ctx.db
+      .query("timerSettings")
+      .withIndex("by_user", (idx) => idx.eq("userId", args.slug))
+      .unique();
+    if (settings) {
+      await ctx.db.delete(settings._id);
+    }
   },
 });
 

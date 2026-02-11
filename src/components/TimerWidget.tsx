@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
-import { STATE_HEIGHTS } from '../types';
+import { STATE_MIN_HEIGHTS, STATE_MIN_WIDTHS } from '../types';
+import type { WidgetState } from '../types';
 import { useDoctorContext } from '../contexts/DoctorContext';
 import { useTimer } from '../hooks/useTimer';
 import { useConvexData } from '../hooks/useConvexData';
@@ -40,7 +41,7 @@ export default function TimerWidget() {
     reorderAppointmentTypes,
   } = useConvexData(activeDoctor?.slug ?? null);
 
-  const deactivateDoctor = useMutation(api.doctors.deactivateDoctor);
+  const deleteDoctor = useMutation(api.doctors.deleteDoctor);
   const [showSettings, setShowSettings] = useState(false);
 
   const timer = useTimer({
@@ -51,6 +52,8 @@ export default function TimerWidget() {
     redThreshold: settings.redThreshold,
   });
 
+  const prevStateRef = useRef<WidgetState | null>(null);
+  const preSettingsSizeRef = useRef<{ width: number; height: number } | null>(null);
   const updateWindowPositionMutation = useMutation(api.settings.updateWindowPosition);
 
   // ── Determine if we need to show doctor selection ──
@@ -60,12 +63,12 @@ export default function TimerWidget() {
   // ── Resize for doctor selection screen ─────────
   useEffect(() => {
     if (showAddDoctor) {
-      window.electronAPI?.setWindowSize(320, STATE_HEIGHTS.doctorSelect);
+      window.electronAPI?.setWindowMinSize(STATE_MIN_WIDTHS.doctorSelect, STATE_MIN_HEIGHTS.doctorSelect);
     } else if (needsDoctorSelect) {
       // 28px title bar + 50px header + 52px per doctor row + 48px "Add Doctor" button + 12px bottom
       const contentHeight = 138 + allDoctors.length * 52;
       // Cap at 400px — the list scrolls beyond that
-      window.electronAPI?.setWindowSize(320, Math.max(STATE_HEIGHTS.doctorSelect, Math.min(400, contentHeight)));
+      window.electronAPI?.setWindowMinSize(STATE_MIN_WIDTHS.doctorSelect, Math.max(STATE_MIN_HEIGHTS.doctorSelect, Math.min(400, contentHeight)));
     }
   }, [needsDoctorSelect, showAddDoctor, allDoctors.length]);
 
@@ -117,7 +120,8 @@ export default function TimerWidget() {
         }
       } else if (target === 'settings') {
         if (timer.widgetState === 'idle' && activeDoctor) {
-          window.electronAPI?.setWindowSize(320, STATE_HEIGHTS.settings);
+          preSettingsSizeRef.current = { width: window.outerWidth, height: window.outerHeight };
+          window.electronAPI?.setWindowMinSize(STATE_MIN_WIDTHS.settings, STATE_MIN_HEIGHTS.settings);
           setShowSettings(true);
         }
       } else if (target === 'switch-doctor') {
@@ -179,10 +183,18 @@ export default function TimerWidget() {
   useEffect(() => {
     if (needsDoctorSelect || showAddDoctor) return; // handled separately
     const state = timer.widgetState;
+    const prev = prevStateRef.current;
+    prevStateRef.current = state;
+
     if (state === 'minimised') {
-      window.electronAPI?.setWindowSize(200, STATE_HEIGHTS.minimised);
+      // Exact size + max-height lock via dedicated handler
+      window.electronAPI?.minimiseToBar();
+    } else if (prev === 'minimised') {
+      // Restoring from minimised — remove max lock, set min
+      window.electronAPI?.restoreFromBar(STATE_MIN_WIDTHS[state], STATE_MIN_HEIGHTS[state]);
     } else {
-      window.electronAPI?.setWindowSize(320, STATE_HEIGHTS[state]);
+      // Normal state transition — set floor, don't shrink user's window
+      window.electronAPI?.setWindowMinSize(STATE_MIN_WIDTHS[state], STATE_MIN_HEIGHTS[state]);
     }
   }, [timer.widgetState, needsDoctorSelect, showAddDoctor]);
 
@@ -316,15 +328,21 @@ export default function TimerWidget() {
             if (!activeDoctor) return;
             const confirmed = window.confirm(`Delete profile for ${activeDoctor.name}? Their consultation history will be preserved.`);
             if (!confirmed) return;
-            try {
-              await deactivateDoctor({ slug: activeDoctor.slug });
-            } catch { /* ignore */ }
+            const slugToDelete = activeDoctor.slug;
             clearDoctor();
             setShowSettings(false);
+            try {
+              await deleteDoctor({ slug: slugToDelete });
+            } catch { /* ignore */ }
           }}
           onDone={() => {
             setShowSettings(false);
-            window.electronAPI?.setWindowSize(320, STATE_HEIGHTS.idle);
+            const saved = preSettingsSizeRef.current;
+            if (saved) {
+              window.electronAPI?.setWindowSize(saved.width, saved.height);
+              preSettingsSizeRef.current = null;
+            }
+            window.electronAPI?.setWindowMinSize(STATE_MIN_WIDTHS.idle, STATE_MIN_HEIGHTS.idle);
           }}
         />
         {isOffline && <OfflineIndicator />}
@@ -389,7 +407,8 @@ export default function TimerWidget() {
             </button>
             <button
               onClick={() => {
-                window.electronAPI?.setWindowSize(320, STATE_HEIGHTS.settings);
+                preSettingsSizeRef.current = { width: window.outerWidth, height: window.outerHeight };
+                window.electronAPI?.setWindowMinSize(STATE_MIN_WIDTHS.settings, STATE_MIN_HEIGHTS.settings);
                 setShowSettings(true);
               }}
               className="
@@ -427,20 +446,22 @@ export default function TimerWidget() {
 
       {/* ── RUNNING / PAUSED / OVERTIME ──────────────── */}
       {isColoured && (
-        <div className="flex-1 flex flex-col">
-          <TimerDisplay
-            state={timer.widgetState}
-            displayTime={timer.displayTime}
-            patientName={timer.consultation?.patientName ?? ''}
-            appointmentType={timer.consultation?.appointmentType ?? ''}
-            targetLabel={`${targetMinutes} min`}
-          />
-          <TimerControls
-            state={timer.widgetState}
-            onPause={timer.pause}
-            onResume={timer.resume}
-            onStop={timer.stop}
-          />
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <div className="w-full max-w-sm">
+            <TimerDisplay
+              state={timer.widgetState}
+              displayTime={timer.displayTime}
+              patientName={timer.consultation?.patientName ?? ''}
+              appointmentType={timer.consultation?.appointmentType ?? ''}
+              targetLabel={`${targetMinutes} min`}
+            />
+            <TimerControls
+              state={timer.widgetState}
+              onPause={timer.pause}
+              onResume={timer.resume}
+              onStop={timer.stop}
+            />
+          </div>
         </div>
       )}
 

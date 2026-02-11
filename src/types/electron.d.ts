@@ -5,6 +5,9 @@ export interface ElectronAPI {
   hideWindow: () => void;
   setAlwaysOnTop: (value: boolean) => void;
   setWindowSize: (width: number, height: number) => void;
+  setWindowMinSize: (minW: number, minH: number) => void;
+  minimiseToBar: () => void;
+  restoreFromBar: (width: number, height: number) => void;
   setWindowPosition: (x: number, y: number) => void;
   getWindowPosition: () => Promise<{ x: number; y: number } | null>;
   openHistoryWindow: () => void;
