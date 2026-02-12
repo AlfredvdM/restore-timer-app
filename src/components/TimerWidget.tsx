@@ -193,8 +193,8 @@ export default function TimerWidget() {
       // Restoring from minimised — remove max lock, set min
       window.electronAPI?.restoreFromBar(STATE_MIN_WIDTHS[state], STATE_MIN_HEIGHTS[state]);
     } else {
-      // Normal state transition — set floor, don't shrink user's window
-      window.electronAPI?.setWindowMinSize(STATE_MIN_WIDTHS[state], STATE_MIN_HEIGHTS[state]);
+      // Normal state transition — resize to match target state
+      window.electronAPI?.setWindowSize(STATE_MIN_WIDTHS[state], STATE_MIN_HEIGHTS[state]);
     }
   }, [timer.widgetState, needsDoctorSelect, showAddDoctor]);
 

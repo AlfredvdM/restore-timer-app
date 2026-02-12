@@ -19,10 +19,10 @@ export default function TimerDisplay({
   const isPaused = state === 'paused';
 
   return (
-    <div className="flex flex-col items-center justify-center px-4 py-3 relative">
+    <div className="flex flex-col items-center justify-center px-3 py-1 relative">
       {/* Patient name */}
       {patientName && (
-        <p className="text-sm font-medium text-white/90 tracking-wide mb-1 truncate max-w-full">
+        <p className="text-sm font-medium text-white/90 tracking-wide mb-0 truncate max-w-full">
           {patientName}
         </p>
       )}
@@ -53,7 +53,7 @@ export default function TimerDisplay({
       </div>
 
       {/* Appointment type + target */}
-      <div className="flex items-center gap-2 mt-1.5">
+      <div className="flex items-center gap-1.5 mt-0.5">
         <span className="text-xs text-white/70">{appointmentType}</span>
         <span className="text-white/30">&#183;</span>
         <span className="text-[11px] text-white/50">{targetLabel}</span>
