@@ -1,13 +1,22 @@
-import { useState } from 'react';
-import { useQuery } from 'convex/react';
+import { useState, useMemo } from 'react';
+import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { useDoctorContext } from '../contexts/DoctorContext';
-import HistoryTable from './HistoryTable';
+import MiniCalendar from './MiniCalendar';
+import DayDetailView from './DayDetailView';
+import ClearHistoryDialog from './ClearHistoryDialog';
 
 function formatDuration(totalSeconds: number): string {
   const mins = Math.floor(totalSeconds / 60);
   const secs = totalSeconds % 60;
   return `${mins}m ${String(secs).padStart(2, '0')}s`;
+}
+
+function toISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function StatCard({
@@ -48,6 +57,8 @@ export default function HistoryView() {
   const [selectedDoctorSlug, setSelectedDoctorSlug] = useState<string | 'all'>(
     activeDoctor?.slug ?? 'all',
   );
+  const [selectedDate, setSelectedDate] = useState(() => toISODate(new Date()));
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
 
   const statsDoctor = selectedDoctorSlug === 'all' ? null : selectedDoctorSlug;
 
@@ -56,11 +67,37 @@ export default function HistoryView() {
     statsDoctor ? { doctorId: statsDoctor } : 'skip',
   );
 
+  // Get consultation dates for calendar dots
+  const consultationDates = useQuery(
+    api.consultations.getConsultationDates,
+    statsDoctor ? { doctorId: statsDoctor } : {},
+  );
+
+  // Get total count for clear dialog
+  const allForCount = useQuery(
+    api.consultations.getConsultations,
+    statsDoctor ? { doctorId: statsDoctor } : 'skip',
+  );
+  const allDoctorsForCount = useQuery(
+    api.consultations.getAllConsultations,
+    !statsDoctor ? {} : 'skip',
+  );
+  const totalCount = useMemo(() => {
+    const data = statsDoctor ? allForCount : allDoctorsForCount;
+    return data?.length ?? 0;
+  }, [statsDoctor, allForCount, allDoctorsForCount]);
+
+  const clearMutation = useMutation(api.consultations.clearAllConsultations);
+
   const loading = statsDoctor ? stats === undefined : false;
   const displayName =
     selectedDoctorSlug === 'all'
       ? 'All Doctors'
       : allDoctors.find((d) => d.slug === selectedDoctorSlug)?.name ?? '';
+
+  const handleClear = async () => {
+    await clearMutation(statsDoctor ? { doctorId: statsDoctor } : {});
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -76,6 +113,26 @@ export default function HistoryView() {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            {/* Clear History button */}
+            <button
+              onClick={() => setClearDialogOpen(true)}
+              disabled={totalCount === 0}
+              className="
+                inline-flex items-center gap-1.5 text-[12px] font-medium
+                text-red-600 bg-red-50 hover:bg-red-100
+                rounded-lg px-3 py-1.5 transition-colors duration-150
+                disabled:opacity-40 disabled:cursor-not-allowed
+                focus:outline-none focus:ring-2 focus:ring-red-500/30
+              "
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18" />
+                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+              </svg>
+              Clear History
+            </button>
+
             {/* Doctor filter */}
             <select
               value={selectedDoctorSlug}
@@ -142,13 +199,29 @@ export default function HistoryView() {
         </div>
       )}
 
-      {/* Table */}
-      <div className="flex-1 px-6 py-4 min-h-0">
-        <HistoryTable
-          doctorSlug={selectedDoctorSlug === 'all' ? null : selectedDoctorSlug}
-          showDoctorColumn={selectedDoctorSlug === 'all'}
+      {/* Main area: calendar sidebar + day detail */}
+      <div className="flex-1 px-6 py-4 min-h-0 flex gap-4">
+        <MiniCalendar
+          selectedDate={selectedDate}
+          datesWithData={consultationDates ?? []}
+          onSelectDate={setSelectedDate}
+          loading={consultationDates === undefined}
+        />
+        <DayDetailView
+          date={selectedDate}
+          doctorSlug={statsDoctor}
+          showDoctorName={selectedDoctorSlug === 'all'}
         />
       </div>
+
+      {/* Clear History Dialog */}
+      <ClearHistoryDialog
+        isOpen={clearDialogOpen}
+        onClose={() => setClearDialogOpen(false)}
+        onConfirm={handleClear}
+        doctorName={statsDoctor ? displayName : null}
+        consultationCount={totalCount}
+      />
     </div>
   );
 }

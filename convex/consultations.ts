@@ -114,6 +114,56 @@ export const getAllConsultations = query({
   },
 });
 
+// Get all unique consultation dates (for calendar dot indicators)
+export const getConsultationDates = query({
+  args: {
+    doctorId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    let results;
+
+    if (args.doctorId) {
+      results = await ctx.db
+        .query("consultations")
+        .withIndex("by_doctor", (idx) => idx.eq("doctorId", args.doctorId!))
+        .collect();
+    } else {
+      results = await ctx.db
+        .query("consultations")
+        .withIndex("by_date")
+        .collect();
+    }
+
+    const dateSet = new Set(results.map((c) => c.consultationDate));
+    return Array.from(dateSet).sort();
+  },
+});
+
+// Clear all consultations (with optional doctor filter)
+export const clearAllConsultations = mutation({
+  args: {
+    doctorId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    let results;
+
+    if (args.doctorId) {
+      results = await ctx.db
+        .query("consultations")
+        .withIndex("by_doctor", (idx) => idx.eq("doctorId", args.doctorId!))
+        .collect();
+    } else {
+      results = await ctx.db.query("consultations").collect();
+    }
+
+    for (const doc of results) {
+      await ctx.db.delete(doc._id);
+    }
+
+    return { deletedCount: results.length };
+  },
+});
+
 // Get today's summary stats for a given doctor
 export const getTodayStats = query({
   args: { doctorId: v.string() },
