@@ -1,6 +1,6 @@
 {
   "name": "restore-consultation-timer",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "module",
   "description": "RESTORE Health and Care Consultation Timer",
   "author": "RESTORE Health and Care",
@@ -38,15 +38,19 @@
       ]
     },
     "win": {
-      "target": "nsis",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
       "icon": "build/icon.ico"
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "installerIcon": null,
-      "uninstallerIcon": null,
-      "installerHeaderIcon": null
+      "oneClick": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "RESTORE Timer"
     }
   },
   "dependencies": {
