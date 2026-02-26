@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
+import { useAuthQuery, useAuthMutation } from '../hooks/useAuthConvex';
 import { useDoctorContext } from '../contexts/DoctorContext';
 import MiniCalendar from './MiniCalendar';
 import DayDetailView from './DayDetailView';
@@ -62,23 +62,23 @@ export default function HistoryView() {
 
   const statsDoctor = selectedDoctorSlug === 'all' ? null : selectedDoctorSlug;
 
-  const stats = useQuery(
+  const stats = useAuthQuery(
     api.consultations.getTodayStats,
     statsDoctor ? { doctorId: statsDoctor } : 'skip',
   );
 
   // Get consultation dates for calendar dots
-  const consultationDates = useQuery(
+  const consultationDates = useAuthQuery(
     api.consultations.getConsultationDates,
     statsDoctor ? { doctorId: statsDoctor } : {},
   );
 
   // Get total count for clear dialog
-  const allForCount = useQuery(
+  const allForCount = useAuthQuery(
     api.consultations.getConsultations,
     statsDoctor ? { doctorId: statsDoctor } : 'skip',
   );
-  const allDoctorsForCount = useQuery(
+  const allDoctorsForCount = useAuthQuery(
     api.consultations.getAllConsultations,
     !statsDoctor ? {} : 'skip',
   );
@@ -87,7 +87,7 @@ export default function HistoryView() {
     return data?.length ?? 0;
   }, [statsDoctor, allForCount, allDoctorsForCount]);
 
-  const clearMutation = useMutation(api.consultations.clearAllConsultations);
+  const clearMutation = useAuthMutation(api.consultations.clearAllConsultations);
 
   const loading = statsDoctor ? stats === undefined : false;
   const displayName =

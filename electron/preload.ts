@@ -34,6 +34,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("request-save-and-quit", () => callback());
   },
   removeAllListeners: (channel: string) => {
-    ipcRenderer.removeAllListeners(channel);
+    const ALLOWED_CHANNELS = ["window-moved", "navigate", "request-save-and-quit"];
+    if (ALLOWED_CHANNELS.includes(channel)) {
+      ipcRenderer.removeAllListeners(channel);
+    }
   },
 });

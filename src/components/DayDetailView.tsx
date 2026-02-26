@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
-import { useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
+import { useAuthQuery } from '../hooks/useAuthConvex';
 
 interface DayDetailViewProps {
   date: string; // "YYYY-MM-DD"
@@ -34,14 +34,14 @@ function formatDateHeader(dateStr: string): string {
 }
 
 export default function DayDetailView({ date, doctorSlug, showDoctorName }: DayDetailViewProps) {
-  const doctorConsultations = useQuery(
+  const doctorConsultations = useAuthQuery(
     api.consultations.getConsultations,
     doctorSlug
       ? { doctorId: doctorSlug, startDate: date, endDate: date }
       : 'skip',
   );
 
-  const allConsultations = useQuery(
+  const allConsultations = useAuthQuery(
     api.consultations.getAllConsultations,
     !doctorSlug
       ? { startDate: date, endDate: date }

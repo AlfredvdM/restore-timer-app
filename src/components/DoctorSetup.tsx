@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation } from 'convex/react';
+import { useAuthMutation } from '../hooks/useAuthConvex';
 import { api } from '../../convex/_generated/api';
 
 interface DoctorSetupProps {
@@ -12,7 +12,7 @@ export default function DoctorSetup({ hasDoctors, onCreated, onCancel }: DoctorS
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
-  const createDoctor = useMutation(api.doctors.createDoctor);
+  const createDoctor = useAuthMutation(api.doctors.createDoctor);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

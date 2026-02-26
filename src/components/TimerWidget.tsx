@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useMutation } from 'convex/react';
+import { useAuthMutation } from '../hooks/useAuthConvex';
 import { api } from '../../convex/_generated/api';
 import { STATE_MIN_HEIGHTS, STATE_MIN_WIDTHS } from '../types';
 import type { WidgetState } from '../types';
@@ -41,7 +41,7 @@ export default function TimerWidget() {
     reorderAppointmentTypes,
   } = useConvexData(activeDoctor?.slug ?? null);
 
-  const deleteDoctor = useMutation(api.doctors.deleteDoctor);
+  const deleteDoctor = useAuthMutation(api.doctors.deleteDoctor);
   const [showSettings, setShowSettings] = useState(false);
 
   const timer = useTimer({
@@ -54,7 +54,7 @@ export default function TimerWidget() {
 
   const prevStateRef = useRef<WidgetState | null>(null);
   const preSettingsSizeRef = useRef<{ width: number; height: number } | null>(null);
-  const updateWindowPositionMutation = useMutation(api.settings.updateWindowPosition);
+  const updateWindowPositionMutation = useAuthMutation(api.settings.updateWindowPosition);
 
   // ── Determine if we need to show doctor selection ──
   const needsDoctorSelect = !activeDoctor && !doctorsLoading;

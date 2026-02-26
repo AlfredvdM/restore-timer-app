@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
+import { useAuthQuery, useAuthMutation } from './useAuthConvex';
 import { APPOINTMENT_TYPE_OPTIONS } from '../types';
 import type { TimerSettings } from '../types';
 
@@ -50,30 +50,30 @@ const DEFAULT_SETTINGS: TimerSettings = {
 
 export function useConvexData(doctorSlug: string | null) {
   // ── Queries ────────────────────────────────────
-  const convexTypes = useQuery(api.appointmentTypes.getActiveAppointmentTypes);
-  const convexSettings = useQuery(
+  const convexTypes = useAuthQuery(api.appointmentTypes.getActiveAppointmentTypes, {});
+  const convexSettings = useAuthQuery(
     api.settings.getSettings,
     doctorSlug ? { userId: doctorSlug } : 'skip',
   );
 
   // ── All appointment types (including inactive, for settings) ──
-  const convexAllTypes = useQuery(api.appointmentTypes.getAllAppointmentTypes);
+  const convexAllTypes = useAuthQuery(api.appointmentTypes.getAllAppointmentTypes, {});
 
   // ── Mutations ──────────────────────────────────
-  const seedMutation = useMutation(api.appointmentTypes.seedAppointmentTypes);
-  const ensureSettingsMutation = useMutation(api.settings.getOrCreateDefaultSettings);
-  const saveMutation = useMutation(api.consultations.saveConsultation);
-  const updateSettingMutation = useMutation(api.settings.updateSetting);
-  const upsertTypeMutation = useMutation(api.appointmentTypes.upsertAppointmentType);
-  const toggleTypeMutation = useMutation(api.appointmentTypes.toggleAppointmentTypeActive);
-  const reorderTypesMutation = useMutation(api.appointmentTypes.reorderAppointmentTypes);
+  const seedMutation = useAuthMutation(api.appointmentTypes.seedAppointmentTypes);
+  const ensureSettingsMutation = useAuthMutation(api.settings.getOrCreateDefaultSettings);
+  const saveMutation = useAuthMutation(api.consultations.saveConsultation);
+  const updateSettingMutation = useAuthMutation(api.settings.updateSetting);
+  const upsertTypeMutation = useAuthMutation(api.appointmentTypes.upsertAppointmentType);
+  const toggleTypeMutation = useAuthMutation(api.appointmentTypes.toggleAppointmentTypeActive);
+  const reorderTypesMutation = useAuthMutation(api.appointmentTypes.reorderAppointmentTypes);
 
   // ── Seed data on mount ─────────────────────────
   const seeded = useRef(false);
   useEffect(() => {
     if (!seeded.current && doctorSlug) {
       seeded.current = true;
-      seedMutation().catch(() => {});
+      seedMutation({}).catch(() => {});
       ensureSettingsMutation({ userId: doctorSlug }).catch(() => {});
     }
   }, [seedMutation, ensureSettingsMutation, doctorSlug]);

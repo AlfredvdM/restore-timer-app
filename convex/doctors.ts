@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { requireAuth } from "./lib/auth";
 
 // Preset colour palette for doctor profiles
 const DOCTOR_COLOURS = [
@@ -24,9 +25,12 @@ function slugify(name: string): string {
 
 // Create a new doctor profile
 export const createDoctor = mutation({
-  args: { name: v.string() },
+  args: { token: v.string(), name: v.string() },
   handler: async (ctx, args) => {
-    const name = args.name.trim();
+    const { token, name: rawName } = args;
+    requireAuth(token);
+
+    const name = rawName.trim();
     if (!name) throw new Error("Name is required");
 
     const slug = slugify(name);
@@ -74,7 +78,10 @@ export const createDoctor = mutation({
 
 // Get all active doctors sorted by name
 export const getAllDoctors = query({
-  handler: async (ctx) => {
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    requireAuth(args.token);
+
     const doctors = await ctx.db
       .query("doctors")
       .withIndex("by_active", (idx) => idx.eq("isActive", true))
@@ -85,36 +92,45 @@ export const getAllDoctors = query({
 
 // Get a single doctor by slug
 export const getDoctorBySlug = query({
-  args: { slug: v.string() },
+  args: { token: v.string(), slug: v.string() },
   handler: async (ctx, args) => {
+    const { token, slug } = args;
+    requireAuth(token);
+
     return await ctx.db
       .query("doctors")
-      .withIndex("by_slug", (idx) => idx.eq("slug", args.slug))
+      .withIndex("by_slug", (idx) => idx.eq("slug", slug))
       .unique();
   },
 });
 
 // Update a doctor's name
 export const updateDoctor = mutation({
-  args: { slug: v.string(), name: v.string() },
+  args: { token: v.string(), slug: v.string(), name: v.string() },
   handler: async (ctx, args) => {
+    const { token, slug, name } = args;
+    requireAuth(token);
+
     const doctor = await ctx.db
       .query("doctors")
-      .withIndex("by_slug", (idx) => idx.eq("slug", args.slug))
+      .withIndex("by_slug", (idx) => idx.eq("slug", slug))
       .unique();
     if (!doctor) throw new Error("Doctor not found");
 
-    await ctx.db.patch(doctor._id, { name: args.name.trim() });
+    await ctx.db.patch(doctor._id, { name: name.trim() });
   },
 });
 
 // Delete a doctor profile (consultation history is preserved)
 export const deleteDoctor = mutation({
-  args: { slug: v.string() },
+  args: { token: v.string(), slug: v.string() },
   handler: async (ctx, args) => {
+    const { token, slug } = args;
+    requireAuth(token);
+
     const doctor = await ctx.db
       .query("doctors")
-      .withIndex("by_slug", (idx) => idx.eq("slug", args.slug))
+      .withIndex("by_slug", (idx) => idx.eq("slug", slug))
       .unique();
     if (!doctor) throw new Error("Doctor not found");
 
@@ -124,7 +140,7 @@ export const deleteDoctor = mutation({
     // Also delete their timer settings
     const settings = await ctx.db
       .query("timerSettings")
-      .withIndex("by_user", (idx) => idx.eq("userId", args.slug))
+      .withIndex("by_user", (idx) => idx.eq("userId", slug))
       .unique();
     if (settings) {
       await ctx.db.delete(settings._id);
@@ -134,7 +150,10 @@ export const deleteDoctor = mutation({
 
 // Idempotent migration: create doctor record for existing "dr-annetjie" data
 export const migrateExistingDoctor = mutation({
-  handler: async (ctx) => {
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    requireAuth(args.token);
+
     const existing = await ctx.db
       .query("doctors")
       .withIndex("by_slug", (idx) => idx.eq("slug", "dr-annetjie"))
@@ -144,7 +163,7 @@ export const migrateExistingDoctor = mutation({
 
     return await ctx.db.insert("doctors", {
       slug: "dr-annetjie",
-      name: "Dr Annetjie van der Nest",
+      name: "Practice Doctor",
       colour: "#059669",
       isActive: true,
       createdAt: Date.now(),

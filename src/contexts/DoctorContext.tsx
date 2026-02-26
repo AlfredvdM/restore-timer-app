@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
-import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
+import { useAuthQuery, useAuthMutation } from '../hooks/useAuthConvex';
 import type { Doctor } from '../types';
 
 const STORAGE_KEY = 'restore-active-doctor';
@@ -23,8 +23,8 @@ export function useDoctorContext() {
 
 export function DoctorProvider({ children }: { children: ReactNode }) {
   const [activeDoctor, setActiveDoctor] = useState<Doctor | null>(null);
-  const rawDoctors = useQuery(api.doctors.getAllDoctors);
-  const migrateMutation = useMutation(api.doctors.migrateExistingDoctor);
+  const rawDoctors = useAuthQuery(api.doctors.getAllDoctors, {});
+  const migrateMutation = useAuthMutation(api.doctors.migrateExistingDoctor);
 
   const allDoctors: Doctor[] = (rawDoctors ?? []).map((d) => ({
     slug: d.slug,
@@ -39,7 +39,7 @@ export function DoctorProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (migrationRan.current) return;
     migrationRan.current = true;
-    migrateMutation().catch(() => {});
+    migrateMutation({}).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // On mount: restore doctor from localStorage only if the process was already running

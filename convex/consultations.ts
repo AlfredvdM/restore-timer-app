@@ -1,9 +1,11 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { requireAuth } from "./lib/auth";
 
 // Save a completed consultation
 export const saveConsultation = mutation({
   args: {
+    token: v.string(),
     doctorId: v.string(),
     doctorName: v.string(),
     patientName: v.optional(v.string()),
@@ -16,16 +18,19 @@ export const saveConsultation = mutation({
     completedAt: v.number(),
   },
   handler: async (ctx, args) => {
-    const wentOvertime = args.actualDurationSeconds > args.targetDurationSeconds;
+    const { token, ...data } = args;
+    requireAuth(token);
+
+    const wentOvertime = data.actualDurationSeconds > data.targetDurationSeconds;
     const overtimeSeconds = wentOvertime
-      ? args.actualDurationSeconds - args.targetDurationSeconds
+      ? data.actualDurationSeconds - data.targetDurationSeconds
       : 0;
 
     return await ctx.db.insert("consultations", {
-      ...args,
+      ...data,
       wentOvertime,
       overtimeSeconds,
-      consultationDate: new Date(args.startedAt).toISOString().split("T")[0],
+      consultationDate: new Date(data.startedAt).toISOString().split("T")[0],
       status: "completed",
     });
   },
@@ -34,6 +39,7 @@ export const saveConsultation = mutation({
 // Get consultation history with filters
 export const getConsultations = query({
   args: {
+    token: v.string(),
     doctorId: v.optional(v.string()),
     startDate: v.optional(v.string()),
     endDate: v.optional(v.string()),
@@ -41,12 +47,15 @@ export const getConsultations = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const { token, ...filters } = args;
+    requireAuth(token);
+
     let q;
 
-    if (args.doctorId) {
+    if (filters.doctorId) {
       q = ctx.db
         .query("consultations")
-        .withIndex("by_doctor", (idx) => idx.eq("doctorId", args.doctorId!));
+        .withIndex("by_doctor", (idx) => idx.eq("doctorId", filters.doctorId!));
     } else {
       q = ctx.db.query("consultations").withIndex("by_date");
     }
@@ -54,15 +63,15 @@ export const getConsultations = query({
     let results = await q.collect();
 
     // Apply filters
-    if (args.startDate) {
-      results = results.filter((c) => c.consultationDate >= args.startDate!);
+    if (filters.startDate) {
+      results = results.filter((c) => c.consultationDate >= filters.startDate!);
     }
-    if (args.endDate) {
-      results = results.filter((c) => c.consultationDate <= args.endDate!);
+    if (filters.endDate) {
+      results = results.filter((c) => c.consultationDate <= filters.endDate!);
     }
-    if (args.appointmentType) {
+    if (filters.appointmentType) {
       results = results.filter(
-        (c) => c.appointmentType === args.appointmentType
+        (c) => c.appointmentType === filters.appointmentType
       );
     }
 
@@ -70,8 +79,8 @@ export const getConsultations = query({
     results.sort((a, b) => b.completedAt - a.completedAt);
 
     // Apply limit
-    if (args.limit) {
-      results = results.slice(0, args.limit);
+    if (filters.limit) {
+      results = results.slice(0, filters.limit);
     }
 
     return results;
@@ -81,33 +90,37 @@ export const getConsultations = query({
 // Get all consultations across all doctors (for "All Doctors" history view)
 export const getAllConsultations = query({
   args: {
+    token: v.string(),
     startDate: v.optional(v.string()),
     endDate: v.optional(v.string()),
     appointmentType: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const { token, ...filters } = args;
+    requireAuth(token);
+
     let results = await ctx.db
       .query("consultations")
       .withIndex("by_date")
       .collect();
 
-    if (args.startDate) {
-      results = results.filter((c) => c.consultationDate >= args.startDate!);
+    if (filters.startDate) {
+      results = results.filter((c) => c.consultationDate >= filters.startDate!);
     }
-    if (args.endDate) {
-      results = results.filter((c) => c.consultationDate <= args.endDate!);
+    if (filters.endDate) {
+      results = results.filter((c) => c.consultationDate <= filters.endDate!);
     }
-    if (args.appointmentType) {
+    if (filters.appointmentType) {
       results = results.filter(
-        (c) => c.appointmentType === args.appointmentType
+        (c) => c.appointmentType === filters.appointmentType
       );
     }
 
     results.sort((a, b) => b.completedAt - a.completedAt);
 
-    if (args.limit) {
-      results = results.slice(0, args.limit);
+    if (filters.limit) {
+      results = results.slice(0, filters.limit);
     }
 
     return results;
@@ -117,15 +130,19 @@ export const getAllConsultations = query({
 // Get all unique consultation dates (for calendar dot indicators)
 export const getConsultationDates = query({
   args: {
+    token: v.string(),
     doctorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const { token, ...filters } = args;
+    requireAuth(token);
+
     let results;
 
-    if (args.doctorId) {
+    if (filters.doctorId) {
       results = await ctx.db
         .query("consultations")
-        .withIndex("by_doctor", (idx) => idx.eq("doctorId", args.doctorId!))
+        .withIndex("by_doctor", (idx) => idx.eq("doctorId", filters.doctorId!))
         .collect();
     } else {
       results = await ctx.db
@@ -142,15 +159,19 @@ export const getConsultationDates = query({
 // Clear all consultations (with optional doctor filter)
 export const clearAllConsultations = mutation({
   args: {
+    token: v.string(),
     doctorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const { token, ...filters } = args;
+    requireAuth(token);
+
     let results;
 
-    if (args.doctorId) {
+    if (filters.doctorId) {
       results = await ctx.db
         .query("consultations")
-        .withIndex("by_doctor", (idx) => idx.eq("doctorId", args.doctorId!))
+        .withIndex("by_doctor", (idx) => idx.eq("doctorId", filters.doctorId!))
         .collect();
     } else {
       results = await ctx.db.query("consultations").collect();
@@ -166,14 +187,20 @@ export const clearAllConsultations = mutation({
 
 // Get today's summary stats for a given doctor
 export const getTodayStats = query({
-  args: { doctorId: v.string() },
+  args: {
+    token: v.string(),
+    doctorId: v.string(),
+  },
   handler: async (ctx, args) => {
+    const { token, doctorId } = args;
+    requireAuth(token);
+
     const today = new Date().toISOString().split("T")[0];
 
     const consultations = await ctx.db
       .query("consultations")
       .withIndex("by_doctor", (idx) =>
-        idx.eq("doctorId", args.doctorId).eq("consultationDate", today)
+        idx.eq("doctorId", doctorId).eq("consultationDate", today)
       )
       .collect();
 
