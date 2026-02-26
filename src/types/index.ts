@@ -19,7 +19,7 @@ export const STATE_MIN_HEIGHTS: Record<WidgetState, number> = {
   running: 192,
   paused: 192,
   overtime: 192,
-  approval: 490,
+  approval: 420,
   minimised: 40,
   settings: 520,
   doctorSelect: 280,

@@ -63,12 +63,12 @@ export default function TimerWidget() {
   // ── Resize for doctor selection screen ─────────
   useEffect(() => {
     if (showAddDoctor) {
-      window.electronAPI?.setWindowMinSize(STATE_MIN_WIDTHS.doctorSelect, STATE_MIN_HEIGHTS.doctorSelect);
+      window.electronAPI?.setWindowSize(STATE_MIN_WIDTHS.doctorSelect, STATE_MIN_HEIGHTS.doctorSelect);
     } else if (needsDoctorSelect) {
       // 28px title bar + 50px header + 52px per doctor row + 48px "Add Doctor" button + 12px bottom
       const contentHeight = 138 + allDoctors.length * 52;
       // Cap at 400px — the list scrolls beyond that
-      window.electronAPI?.setWindowMinSize(STATE_MIN_WIDTHS.doctorSelect, Math.max(STATE_MIN_HEIGHTS.doctorSelect, Math.min(400, contentHeight)));
+      window.electronAPI?.setWindowSize(STATE_MIN_WIDTHS.doctorSelect, Math.max(STATE_MIN_HEIGHTS.doctorSelect, Math.min(400, contentHeight)));
     }
   }, [needsDoctorSelect, showAddDoctor, allDoctors.length]);
 
@@ -321,6 +321,7 @@ export default function TimerWidget() {
           onReorderTypes={reorderAppointmentTypes}
           doctorName={activeDoctor!.name}
           onSwitchDoctor={() => {
+            preSettingsSizeRef.current = null;
             clearDoctor();
             setShowSettings(false);
           }}
@@ -329,6 +330,7 @@ export default function TimerWidget() {
             const confirmed = window.confirm(`Delete profile for ${activeDoctor.name}? Their consultation history will be preserved.`);
             if (!confirmed) return;
             const slugToDelete = activeDoctor.slug;
+            preSettingsSizeRef.current = null;
             clearDoctor();
             setShowSettings(false);
             try {

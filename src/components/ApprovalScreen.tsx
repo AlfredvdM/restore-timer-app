@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 interface ApprovalScreenProps {
   patientName: string;
@@ -24,6 +24,18 @@ export default function ApprovalScreen({
   onBack,
 }: ApprovalScreenProps) {
   const [notes, setNotes] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      onSave(notes);
+    }
+  };
 
   return (
     <div className="px-4 pb-4 flex flex-col gap-3">
@@ -72,8 +84,10 @@ export default function ApprovalScreen({
           Notes (optional)
         </label>
         <textarea
+          ref={textareaRef}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder="Add consultation notes..."
           rows={3}
           className="

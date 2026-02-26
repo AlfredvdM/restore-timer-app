@@ -65,10 +65,12 @@ export function DoctorProvider({ children }: { children: ReactNode }) {
 
   const selectDoctor = useCallback(
     (slug: string) => {
+      // Always persist the chosen slug so the restoration effect can resolve it
+      // once the Convex query catches up (handles create-then-select race).
+      localStorage.setItem(STORAGE_KEY, slug);
       const doctor = allDoctors.find((d) => d.slug === slug);
       if (doctor) {
         setActiveDoctor(doctor);
-        localStorage.setItem(STORAGE_KEY, slug);
       }
     },
     [allDoctors],
